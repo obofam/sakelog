@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#7B2D3B">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="酒ログ">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<title>酒ログ</title>
+<style>
+  :root{
+    --bg:#1E1417;
+    --surface:#2B1E22;
+    --accent:#C9556B;
+    --accent-deep:#7B2D3B;
+    --text:#F4EDE9;
+    --muted:#A89A96;
+    --danger:#E05C5C;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;padding:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic","Meiryo",sans-serif;
+    -webkit-tap-highlight-color:transparent;
+  }
+  body{
+    min-height:100vh;
+    min-height:100dvh;
+    display:flex;
+    justify-content:center;
+  }
+  #app{
+    width:100%;
+    max-width:480px;
+    min-height:100vh;
+    min-height:100dvh;
+    padding:calc(env(safe-area-inset-top) + 16px) calc(env(safe-area-inset-right) + 16px)
+             calc(env(safe-area-inset-bottom) + 16px) calc(env(safe-area-inset-left) + 16px);
+    display:flex;
+    flex-direction:column;
+    position:relative;
+  }
+  [hidden]{display:none !important;}
+
+  button{
+    font-family:inherit;
+    -webkit-tap-highlight-color:transparent;
+    touch-action:manipulation;
+    cursor:pointer;
+    border:none;
+  }
+  button:active{transform:scale(0.97);}
+  button:disabled{opacity:0.5;}
+
+  .btn-primary{
+    width:100%;
+    min-height:72px;
+    font-size:22px;
+    font-weight:700;
+    border-radius:18px;
+    background:var(--accent);
+    color:#fff;
+    margin-bottom:14px;
+    display:flex;align-items:center;justify-content:center;gap:10px;
+  }
+  .btn-secondary{
+    width:100%;
+    min-height:72px;
+    font-size:20px;
+    font-weight:600;
+    border-radius:18px;
+    background:var(--surface);
+    color:var(--text);
+    border:2px solid var(--accent);
+  }
+  .btn-rating{
+    width:100%;
+    min-height:84px;
+    font-size:22px;
+    font-weight:700;
+    border-radius:18px;
+    background:var(--surface);
+    color:var(--text);
+    margin-bottom:14px;
+    display:flex;align-items:center;justify-content:flex-start;gap:16px;
+    padding:0 22px;
+    border:3px solid transparent;
+  }
+  .btn-rating .emoji{font-size:32px;}
+  .btn-rating.active{
+    border-color:var(--accent);
+    background:linear-gradient(0deg, rgba(201,85,107,0.25), rgba(201,85,107,0.25)), var(--surface);
+  }
+
+  .grid2{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:12px;
+  }
+  .btn-store{
+    min-height:72px;
+    font-size:18px;
+    font-weight:600;
+    border-radius:16px;
+    background:var(--surface);
+    color:var(--text);
+    padding:8px 10px;
+    text-align:center;
+    border:3px solid transparent;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .btn-store.active{
+    border-color:var(--accent);
+  }
+
+  h1{font-size:30px;margin:6px 0 0;}
+  h2{font-size:24px;margin:18px 0 16px;text-align:center;}
+  .subtitle{color:var(--muted);font-size:15px;margin:2px 0 20px;}
+
+  header.home-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+  }
+  .settings-btn{
+    background:transparent;
+    color:var(--muted);
+    font-size:26px;
+    padding:6px;
+    min-width:44px;min-height:44px;
+    border-radius:12px;
+  }
+
+  .log-list{
+    list-style:none;margin:8px 0 0;padding:0;
+    flex:1;
+    overflow-y:auto;
+  }
+  .log-row{
+    display:flex;align-items:center;gap:14px;
+    background:var(--surface);
+    border-radius:14px;
+    padding:10px;
+    margin-bottom:10px;
+    width:100%;
+    text-align:left;
+  }
+  .log-thumb{
+    width:64px;height:64px;
+    border-radius:10px;
+    object-fit:cover;
+    flex-shrink:0;
+    background:#000;
+  }
+  .log-info{flex:1;min-width:0;}
+  .log-rating{font-size:16px;font-weight:700;}
+  .log-store{color:var(--muted);font-size:14px;margin-top:2px;}
+  .log-date{color:var(--muted);font-size:13px;margin-top:2px;}
+
+  .empty-state{
+    color:var(--muted);
+    text-align:center;
+    font-size:17px;
+    margin-top:60px;
+    line-height:1.7;
+  }
+  .count-footer{
+    text-align:center;
+    color:var(--muted);
+    font-size:14px;
+    padding-top:10px;
+  }
+
+  .photo-preview{
+    width:100%;
+    max-height:40vh;
+    object-fit:contain;
+    border-radius:18px;
+    background:#000;
+    margin-bottom:10px;
+    display:block;
+  }
+  .photo-preview-small{
+    width:120px;height:120px;
+    object-fit:cover;
+    border-radius:16px;
+    margin:0 auto 18px;
+    display:block;
+    background:#000;
+  }
+
+  .link-btn{
+    display:block;
+    width:100%;
+    background:transparent;
+    color:var(--muted);
+    font-size:17px;
+    padding:16px;
+    text-align:center;
+  }
+
+  .screen{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+  }
+
+  .back-btn{
+    background:transparent;
+    color:var(--text);
+    font-size:17px;
+    padding:10px 4px;
+    align-self:flex-start;
+    margin-bottom:6px;
+  }
+
+  .done-wrap{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+  }
+  .done-check{font-size:34px;font-weight:800;margin-bottom:18px;}
+  .done-sub{color:var(--muted);font-size:16px;margin-top:6px;}
+
+  .detail-photo{
+    width:100%;
+    max-height:45vh;
+    object-fit:contain;
+    border-radius:18px;
+    background:#000;
+    margin-bottom:14px;
+  }
+  .detail-meta{color:var(--muted);font-size:15px;margin-bottom:16px;text-align:center;}
+  .section-label{font-size:15px;color:var(--muted);margin:18px 0 8px;font-weight:600;}
+  .btn-danger{
+    width:100%;
+    min-height:64px;
+    font-size:18px;
+    font-weight:700;
+    border-radius:16px;
+    background:transparent;
+    border:2px solid var(--danger);
+    color:var(--danger);
+    margin-top:22px;
+  }
+  .btn-danger.confirming{
+    background:var(--danger);
+    color:#fff;
+  }
+
+  /* オーバーレイシート（新しい店 / 設定） */
+  .overlay{
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,0.55);
+    display:flex;
+    align-items:flex-end;
+    justify-content:center;
+    z-index:50;
+  }
+  .sheet{
+    width:100%;
+    max-width:480px;
+    background:var(--surface);
+    border-radius:22px 22px 0 0;
+    padding:24px calc(env(safe-area-inset-left) + 20px) calc(env(safe-area-inset-bottom) + 24px) calc(env(safe-area-inset-right) + 20px);
+  }
+  .sheet h3{margin:0 0 16px;font-size:20px;}
+  .sheet input[type=text]{
+    width:100%;
+    font-size:19px;
+    padding:16px;
+    border-radius:14px;
+    border:2px solid var(--accent-deep);
+    background:var(--bg);
+    color:var(--text);
+    margin-bottom:16px;
+  }
+  .chip-row{display:flex;gap:10px;margin-bottom:20px;}
+  .chip{
+    flex:1;
+    padding:14px;
+    border-radius:14px;
+    background:var(--bg);
+    color:var(--muted);
+    font-size:16px;
+    font-weight:600;
+    border:2px solid transparent;
+    text-align:center;
+  }
+  .chip.selected{
+    border-color:var(--accent);
+    color:var(--text);
+  }
+  .sheet-list{margin-bottom:10px;}
+  .sheet-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:16px 4px;
+    font-size:17px;
+    border-bottom:1px solid rgba(255,255,255,0.08);
+  }
+  .version-text{color:var(--muted);font-size:13px;text-align:center;margin-top:14px;}
+
+  .toast{
+    position:fixed;
+    bottom:calc(env(safe-area-inset-bottom) + 26px);
+    left:50%;
+    transform:translateX(-50%) translateY(20px);
+    background:#000;
+    color:#fff;
+    padding:12px 22px;
+    border-radius:100px;
+    font-size:15px;
+    opacity:0;
+    transition:opacity 0.2s, transform 0.2s;
+    z-index:100;
+    pointer-events:none;
+    white-space:nowrap;
+  }
+  .toast.show{
+    opacity:0.95;
+    transform:translateX(-50%) translateY(0);
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ============ HOME ============ -->
+  <section id="home" class="screen">
+    <header class="home-header">
+      <div>
+        <h1>酒ログ</h1>
+        <p class="subtitle">撮るだけでええ</p>
+      </div>
+      <button class="settings-btn" id="btnSettings" aria-label="設定">⚙︎</button>
+    </header>
+
+    <button class="btn-primary" id="btnCamera">📷 撮る</button>
+    <button class="btn-secondary" id="btnPicker" style="margin-bottom:22px;">🖼 カメラロールから選ぶ</button>
+    <input type="file" id="fileCamera" accept="image/*" capture="environment" hidden>
+    <input type="file" id="filePicker" accept="image/*" hidden>
+
+    <p class="section-label" style="margin-top:0;">最近飲んだの</p>
+    <ul class="log-list" id="logList"></ul>
+    <p class="count-footer" id="countFooter"></p>
+  </section>
+
+  <!-- ============ RATE ============ -->
+  <section id="rate" class="screen" hidden>
+    <img class="photo-preview" id="ratePhoto" alt="撮った写真">
+    <h2>どうやった？</h2>
+    <div id="ratingButtons"></div>
+    <button class="link-btn" id="btnRateCancel">やめる</button>
+  </section>
+
+  <!-- ============ STORE ============ -->
+  <section id="store" class="screen" hidden>
+    <h2>どこで買った？</h2>
+    <div class="grid2" id="storeGrid"></div>
+    <div class="grid2" style="margin-top:12px;">
+      <button class="btn-store" id="btnStoreLater">⏭ あとで</button>
+      <button class="btn-store" id="btnStoreNew">➕ 新しい店</button>
+    </div>
+  </section>
+
+  <!-- ============ DONE ============ -->
+  <section id="done" class="screen" hidden>
+    <div class="done-wrap" id="doneWrap">
+      <p class="done-check">保存したで 🍷</p>
+      <img class="photo-preview-small" id="donePhoto" alt="">
+      <p class="log-rating" id="doneRating"></p>
+      <p class="done-sub" id="doneStore"></p>
+    </div>
+  </section>
+
+  <!-- ============ DETAIL ============ -->
+  <section id="detail" class="screen" hidden>
+    <button class="back-btn" id="btnDetailBack">← 戻る</button>
+    <img class="detail-photo" id="detailPhoto" alt="">
+    <p class="detail-meta" id="detailMeta"></p>
+    <p class="section-label" style="margin-top:0;">評価</p>
+    <div id="detailRatingButtons"></div>
+    <p class="section-label">お店</p>
+    <div class="grid2" id="detailStoreGrid"></div>
+    <button class="btn-danger" id="btnDelete">🗑 消す</button>
+  </section>
+
+</div>
+
+<!-- 新しい店シート -->
+<div class="overlay" id="newStoreOverlay" hidden>
+  <div class="sheet">
+    <h3>新しい店</h3>
+    <input type="text" id="newStoreName" placeholder="店の名前" enterkeyhint="done">
+    <div class="chip-row">
+      <button class="chip selected" id="chipRetail">🏪 小売</button>
+      <button class="chip" id="chipRestaurant">🍽 レストラン</button>
+    </div>
+    <button class="btn-primary" id="btnSaveNewStore" style="margin-bottom:0;">これで保存</button>
+  </div>
+</div>
+
+<!-- 設定シート -->
+<div class="overlay" id="settingsOverlay" hidden>
+  <div class="sheet">
+    <h3>設定</h3>
+    <div class="sheet-list">
+      <button class="link-btn" style="text-align:left;padding:16px 4px;" id="btnExportJson">JSONを書き出す</button>
+    </div>
+    <p class="version-text">v0.1 MVP</p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+
+/* =========================================================
+   IndexedDB ヘルパー
+   ストア構成: drinks / logs / stores
+   （将来追加予定: fuzzy＝あいまい記録用, profile＝好み分析用。MVPでは未実装）
+========================================================= */
+const DB_NAME = 'sakelog';
+const DB_VERSION = 1;
+let dbPromise = null;
+
+function openDB(){
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('drinks')){
+        db.createObjectStore('drinks', { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains('logs')){
+        const logs = db.createObjectStore('logs', { keyPath: 'id' });
+        logs.createIndex('drankAt', 'drankAt');
+        logs.createIndex('drinkId', 'drinkId');
+      }
+      if (!db.objectStoreNames.contains('stores')){
+        const stores = db.createObjectStore('stores', { keyPath: 'id' });
+        stores.createIndex('lastUsedAt', 'lastUsedAt');
+      }
+    };
+    req.onsuccess = (e) => resolve(e.target.result);
+    req.onerror = (e) => reject(e.target.error);
+  });
+  return dbPromise;
+}
+
+function withStore(storeName, mode){
+  return openDB().then((db) => db.transaction(storeName, mode).objectStore(storeName));
+}
+function dbPut(storeName, obj){
+  return withStore(storeName, 'readwrite').then((store) => new Promise((res, rej) => {
+    const r = store.put(obj);
+    r.onsuccess = () => res(obj);
+    r.onerror = () => rej(r.error);
+  }));
+}
+function dbGet(storeName, id){
+  return withStore(storeName, 'readonly').then((store) => new Promise((res, rej) => {
+    const r = store.get(id);
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  }));
+}
+function dbDelete(storeName, id){
+  return withStore(storeName, 'readwrite').then((store) => new Promise((res, rej) => {
+    const r = store.delete(id);
+    r.onsuccess = () => res();
+    r.onerror = () => rej(r.error);
+  }));
+}
+function dbGetAll(storeName){
+  return withStore(storeName, 'readonly').then((store) => new Promise((res, rej) => {
+    const r = store.getAll();
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  }));
+}
+
+function uuid(){
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
+/* =========================================================
+   初期シードデータ（お店が0件のときだけ投入）
+========================================================= */
+async function seedStoresIfEmpty(){
+  const existing = await dbGetAll('stores');
+  if (existing.length > 0) return;
+  const seedNames = ['サミット', '成城石井', 'ローソン', 'カルディ', '酒屋', 'レストラン'];
+  const now = Date.now();
+  for (let i = 0; i < seedNames.length; i++){
+    const name = seedNames[i];
+    await dbPut('stores', {
+      id: uuid(),
+      name,
+      type: name === 'レストラン' ? 'restaurant' : 'retail',
+      place: null,
+      lastUsedAt: now - i * 1000,
+      createdAt: now
+    });
+  }
+}
+
+/* =========================================================
+   評価の定義
+========================================================= */
+const RATINGS = [
+  { value: 4, emoji: '🔥', label: '超好き・リピ確' },
+  { value: 3, emoji: '😋', label: 'うまい' },
+  { value: 2, emoji: '🙂', label: 'まあまあ' },
+  { value: 1, emoji: '🙅', label: '好みじゃない' }
+];
+function ratingInfo(v){
+  return RATINGS.find((r) => r.value === v) || RATINGS[RATINGS.length - 1];
+}
+
+/* =========================================================
+   画面切り替え
+========================================================= */
+const screens = ['home', 'rate', 'store', 'done', 'detail'];
+function showScreen(id){
+  screens.forEach((s) => {
+    document.getElementById(s).hidden = (s !== id);
+  });
+}
+
+/* =========================================================
+   トースト
+========================================================= */
+let toastTimer = null;
+function toast(msg){
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 1200);
+}
+
+/* =========================================================
+   アプリの状態（保存待ちの写真・評価）
+========================================================= */
+let pending = null; // { photo, thumb, drankAt, photoUrl }
+let pendingRating = null;
+let homeThumbUrls = [];
+let detailPhotoUrl = null;
+
+/* =========================================================
+   写真処理
+========================================================= */
+async function loadBitmap(file){
+  if (window.createImageBitmap){
+    try {
+      return await createImageBitmap(file, { imageOrientation: 'from-image' });
+    } catch (e){
+      try { return await createImageBitmap(file); } catch (e2) { /* fall through */ }
+    }
+  }
+  return await new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+function drawToCanvas(bitmap, maxEdge){
+  const w = bitmap.width || bitmap.naturalWidth;
+  const h = bitmap.height || bitmap.naturalHeight;
+  const scale = Math.min(1, maxEdge / Math.max(w, h));
+  const outW = Math.max(1, Math.round(w * scale));
+  const outH = Math.max(1, Math.round(h * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = outW;
+  canvas.height = outH;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(bitmap, 0, 0, outW, outH);
+  return canvas;
+}
+function canvasToBlob(canvas, quality){
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), 'image/jpeg', quality);
+  });
+}
+
+async function handleFileSelected(file){
+  if (!file) return;
+  const bitmap = await loadBitmap(file);
+
+  const photoCanvas = drawToCanvas(bitmap, 1280);
+  const photo = await canvasToBlob(photoCanvas, 0.82);
+
+  const thumbCanvas = drawToCanvas(bitmap, 160);
+  const thumb = await canvasToBlob(thumbCanvas, 0.8);
+
+  if (bitmap.close) bitmap.close();
+
+  // カメラロールから選んだ（撮影から1時間以上経っている）場合はその日時を、
+  // それ以外（その場で撮った）は今の時刻を「飲んだ日時」にする
+  const now = Date.now();
+  const ONE_HOUR = 60 * 60 * 1000;
+  const drankAt = (file.lastModified && (now - file.lastModified > ONE_HOUR))
+    ? file.lastModified
+    : now;
+
+  pending = { photo, thumb, drankAt };
+  pendingRating = null;
+
+  const photoUrl = URL.createObjectURL(photo);
+  const img = document.getElementById('ratePhoto');
+  img.src = photoUrl;
+
+  renderRatingButtons();
+  showScreen('rate');
+}
+
+/* =========================================================
+   評価画面
+========================================================= */
+function renderRatingButtons(){
+  const wrap = document.getElementById('ratingButtons');
+  wrap.innerHTML = '';
+  RATINGS.forEach((r) => {
+    const btn = document.createElement('button');
+    btn.className = 'btn-rating';
+    btn.innerHTML = `<span class="emoji">${r.emoji}</span><span>${r.label}</span>`;
+    btn.addEventListener('click', () => {
+      pendingRating = r.value;
+      renderStoreScreen();
+      showScreen('store');
+    });
+    wrap.appendChild(btn);
+  });
+}
+
+/* =========================================================
+   店選択画面
+========================================================= */
+let saving = false;
+
+async function renderStoreScreen(){
+  const stores = await dbGetAll('stores');
+  stores.sort((a, b) => (b.lastUsedAt || 0) - (a.lastUsedAt || 0));
+  const top = stores.slice(0, 6);
+
+  const grid = document.getElementById('storeGrid');
+  grid.innerHTML = '';
+  top.forEach((s) => {
+    const btn = document.createElement('button');
+    btn.className = 'btn-store';
+    btn.textContent = s.name;
+    btn.addEventListener('click', () => finalizeSave(s.id));
+    grid.appendChild(btn);
+  });
+}
+
+async function finalizeSave(storeId){
+  if (saving) return;
+  if (!pending || pendingRating == null) return;
+  saving = true;
+  setStoreButtonsDisabled(true);
+
+  const drinkId = uuid();
+  const drink = {
+    id: drinkId,
+    kind: 'unknown',
+    name: null,
+    producer: null,
+    region: null,
+    grape: null,
+    vintage: null,
+    color: null,
+    importer: null,
+    confirmed: false,
+    photo: pending.photo,
+    thumb: pending.thumb,
+    createdAt: Date.now()
+  };
+  const log = {
+    id: uuid(),
+    drinkId: drinkId,
+    drankAt: pending.drankAt,
+    rating: pendingRating,
+    storeId: storeId || null,
+    price: null,
+    memo: null,
+    companions: null,
+    food: null,
+    createdAt: Date.now()
+  };
+
+  await dbPut('drinks', drink);
+  await dbPut('logs', log);
+
+  let storeName = '店：あとで';
+  if (storeId){
+    const store = await dbGet('stores', storeId);
+    if (store){
+      store.lastUsedAt = Date.now();
+      await dbPut('stores', store);
+      storeName = store.name;
+    }
+  }
+
+  showDoneScreen(drink, log, storeName);
+
+  saving = false;
+  setStoreButtonsDisabled(false);
+}
+
+function setStoreButtonsDisabled(disabled){
+  document.querySelectorAll('#storeGrid button, #btnStoreLater, #btnStoreNew').forEach((b) => {
+    b.disabled = disabled;
+  });
+}
+
+/* =========================================================
+   完了画面
+========================================================= */
+let doneTimer = null;
+function showDoneScreen(drink, log, storeName){
+  const url = URL.createObjectURL(drink.thumb);
+  document.getElementById('donePhoto').src = url;
+  const info = ratingInfo(log.rating);
+  document.getElementById('doneRating').textContent = `${info.emoji} ${info.label}`;
+  document.getElementById('doneStore').textContent = storeName;
+  showScreen('done');
+
+  pending = null;
+  pendingRating = null;
+
+  clearTimeout(doneTimer);
+  doneTimer = setTimeout(goHomeFromDone, 1500);
+}
+function goHomeFromDone(){
+  clearTimeout(doneTimer);
+  showScreen('home');
+  renderHome();
+}
+
+/* =========================================================
+   新しい店シート
+========================================================= */
+let newStoreType = 'retail';
+
+function openNewStoreSheet(){
+  document.getElementById('newStoreName').value = '';
+  newStoreType = 'retail';
+  document.getElementById('chipRetail').classList.add('selected');
+  document.getElementById('chipRestaurant').classList.remove('selected');
+  document.getElementById('newStoreOverlay').hidden = false;
+  setTimeout(() => document.getElementById('newStoreName').focus(), 50);
+}
+function closeNewStoreSheet(){
+  document.getElementById('newStoreOverlay').hidden = true;
+}
+
+async function saveNewStore(){
+  const name = document.getElementById('newStoreName').value.trim();
+  if (!name){
+    toast('店の名前を入れてな');
+    return;
+  }
+  const store = {
+    id: uuid(),
+    name,
+    type: newStoreType,
+    place: null,
+    lastUsedAt: Date.now(),
+    createdAt: Date.now()
+  };
+  await dbPut('stores', store);
+  closeNewStoreSheet();
+  await finalizeSave(store.id);
+}
+
+/* =========================================================
+   ホーム画面
+========================================================= */
+function fmtDate(ms){
+  const d = new Date(ms);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+async function renderHome(){
+  homeThumbUrls.forEach((u) => URL.revokeObjectURL(u));
+  homeThumbUrls = [];
+
+  const [logs, drinksArr, storesArr] = await Promise.all([
+    dbGetAll('logs'), dbGetAll('drinks'), dbGetAll('stores')
+  ]);
+  const drinkMap = new Map(drinksArr.map((d) => [d.id, d]));
+  const storeMap = new Map(storesArr.map((s) => [s.id, s]));
+
+  logs.sort((a, b) => (b.drankAt || 0) - (a.drankAt || 0));
+
+  const list = document.getElementById('logList');
+  list.innerHTML = '';
+
+  if (logs.length === 0){
+    const li = document.createElement('li');
+    li.className = 'empty-state';
+    li.textContent = 'まだ何もないで。撮ったら始まるよ';
+    list.appendChild(li);
+  } else {
+    logs.forEach((log) => {
+      const drink = drinkMap.get(log.drinkId);
+      if (!drink) return;
+      const store = log.storeId ? storeMap.get(log.storeId) : null;
+      const info = ratingInfo(log.rating);
+
+      const li = document.createElement('li');
+      const btn = document.createElement('button');
+      btn.className = 'log-row';
+
+      const thumbUrl = URL.createObjectURL(drink.thumb);
+      homeThumbUrls.push(thumbUrl);
+
+      btn.innerHTML = `
+        <img class="log-thumb" src="${thumbUrl}" alt="">
+        <span class="log-info">
+          <span class="log-rating">${info.emoji} ${info.label}</span>
+          <span class="log-store">${store ? store.name : '店：あとで'}</span>
+          <span class="log-date">${fmtDate(log.drankAt)}</span>
+        </span>
+      `;
+      btn.addEventListener('click', () => openDetail(log.id));
+      li.appendChild(btn);
+      list.appendChild(li);
+    });
+  }
+
+  document.getElementById('countFooter').textContent = `これまで ${logs.length} 本`;
+}
+
+/* =========================================================
+   詳細画面
+========================================================= */
+let detailLogId = null;
+let deleteConfirmTimer = null;
+let deleteArmed = false;
+
+async function openDetail(logId){
+  detailLogId = logId;
+  deleteArmed = false;
+  clearTimeout(deleteConfirmTimer);
+  await renderDetail();
+  showScreen('detail');
+}
+
+async function renderDetail(){
+  const log = await dbGet('logs', detailLogId);
+  if (!log){ showScreen('home'); renderHome(); return; }
+  const drink = await dbGet('drinks', log.drinkId);
+  const store = log.storeId ? await dbGet('stores', log.storeId) : null;
+
+  if (detailPhotoUrl) URL.revokeObjectURL(detailPhotoUrl);
+  detailPhotoUrl = URL.createObjectURL(drink.photo);
+  document.getElementById('detailPhoto').src = detailPhotoUrl;
+  document.getElementById('detailMeta').textContent = fmtDate(log.drankAt);
+
+  // 評価ボタン
+  const rWrap = document.getElementById('detailRatingButtons');
+  rWrap.innerHTML = '';
+  RATINGS.forEach((r) => {
+    const btn = document.createElement('button');
+    btn.className = 'btn-rating' + (log.rating === r.value ? ' active' : '');
+    btn.innerHTML = `<span class="emoji">${r.emoji}</span><span>${r.label}</span>`;
+    btn.addEventListener('click', async () => {
+      if (log.rating === r.value) return;
+      log.rating = r.value;
+      await dbPut('logs', log);
+      toast('変えたで');
+      renderDetail();
+    });
+    rWrap.appendChild(btn);
+  });
+
+  // 店ボタン（最近の店 + あとで）
+  const stores = await dbGetAll('stores');
+  stores.sort((a, b) => (b.lastUsedAt || 0) - (a.lastUsedAt || 0));
+  const top = stores.slice(0, 5);
+  const sGrid = document.getElementById('detailStoreGrid');
+  sGrid.innerHTML = '';
+
+  const laterBtn = document.createElement('button');
+  laterBtn.className = 'btn-store' + (!log.storeId ? ' active' : '');
+  laterBtn.textContent = '⏭ あとで';
+  laterBtn.addEventListener('click', async () => {
+    if (!log.storeId) return;
+    log.storeId = null;
+    await dbPut('logs', log);
+    toast('変えたで');
+    renderDetail();
+  });
+  sGrid.appendChild(laterBtn);
+
+  top.forEach((s) => {
+    const btn = document.createElement('button');
+    btn.className = 'btn-store' + (log.storeId === s.id ? ' active' : '');
+    btn.textContent = s.name;
+    btn.addEventListener('click', async () => {
+      if (log.storeId === s.id) return;
+      log.storeId = s.id;
+      s.lastUsedAt = Date.now();
+      await dbPut('stores', s);
+      await dbPut('logs', log);
+      toast('変えたで');
+      renderDetail();
+    });
+    sGrid.appendChild(btn);
+  });
+
+  // 削除ボタンの状態リセット
+  const delBtn = document.getElementById('btnDelete');
+  delBtn.textContent = '🗑 消す';
+  delBtn.classList.remove('confirming');
+}
+
+async function handleDeleteClick(){
+  if (!deleteArmed){
+    deleteArmed = true;
+    const delBtn = document.getElementById('btnDelete');
+    delBtn.textContent = 'ほんまに消す？もう一回タップ';
+    delBtn.classList.add('confirming');
+    clearTimeout(deleteConfirmTimer);
+    deleteConfirmTimer = setTimeout(() => {
+      deleteArmed = false;
+      delBtn.textContent = '🗑 消す';
+      delBtn.classList.remove('confirming');
+    }, 3000);
+    return;
+  }
+  clearTimeout(deleteConfirmTimer);
+  deleteArmed = false;
+
+  const log = await dbGet('logs', detailLogId);
+  if (!log) { showScreen('home'); renderHome(); return; }
+  await dbDelete('logs', log.id);
+
+  const otherLogs = await dbGetAll('logs');
+  const stillUsed = otherLogs.some((l) => l.drinkId === log.drinkId);
+  if (!stillUsed){
+    await dbDelete('drinks', log.drinkId);
+  }
+
+  showScreen('home');
+  renderHome();
+}
+
+/* =========================================================
+   設定シート / JSON書き出し
+========================================================= */
+async function exportJSON(){
+  const [stores, drinksArr, logs] = await Promise.all([
+    dbGetAll('stores'), dbGetAll('drinks'), dbGetAll('logs')
+  ]);
+  // Blob（photo/thumb）は除いてメタデータだけ出す
+  const drinks = drinksArr.map(({ photo, thumb, ...rest }) => rest);
+  return JSON.stringify({ stores, drinks, logs }, null, 2);
+}
+window.sakelog = { exportJSON };
+
+function downloadJSON(json){
+  const a = document.createElement('a');
+  a.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(json);
+  a.download = 'sakelog-export.json';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+/* =========================================================
+   イベント登録
+========================================================= */
+function init(){
+  document.getElementById('btnCamera').addEventListener('click', () => {
+    document.getElementById('fileCamera').click();
+  });
+  document.getElementById('btnPicker').addEventListener('click', () => {
+    document.getElementById('filePicker').click();
+  });
+  document.getElementById('fileCamera').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (file) handleFileSelected(file);
+  });
+  document.getElementById('filePicker').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (file) handleFileSelected(file);
+  });
+
+  document.getElementById('btnRateCancel').addEventListener('click', () => {
+    pending = null;
+    pendingRating = null;
+    showScreen('home');
+  });
+
+  document.getElementById('btnStoreLater').addEventListener('click', () => finalizeSave(null));
+  document.getElementById('btnStoreNew').addEventListener('click', openNewStoreSheet);
+
+  document.getElementById('chipRetail').addEventListener('click', () => {
+    newStoreType = 'retail';
+    document.getElementById('chipRetail').classList.add('selected');
+    document.getElementById('chipRestaurant').classList.remove('selected');
+  });
+  document.getElementById('chipRestaurant').addEventListener('click', () => {
+    newStoreType = 'restaurant';
+    document.getElementById('chipRestaurant').classList.add('selected');
+    document.getElementById('chipRetail').classList.remove('selected');
+  });
+  document.getElementById('btnSaveNewStore').addEventListener('click', saveNewStore);
+
+  document.getElementById('doneWrap').addEventListener('click', goHomeFromDone);
+
+  document.getElementById('btnDetailBack').addEventListener('click', () => {
+    showScreen('home');
+    renderHome();
+  });
+  document.getElementById('btnDelete').addEventListener('click', handleDeleteClick);
+
+  document.getElementById('btnSettings').addEventListener('click', () => {
+    document.getElementById('settingsOverlay').hidden = false;
+  });
+  document.getElementById('settingsOverlay').addEventListener('click', (e) => {
+    if (e.target.id === 'settingsOverlay'){
+      document.getElementById('settingsOverlay').hidden = true;
+    }
+  });
+  document.getElementById('btnExportJson').addEventListener('click', async () => {
+    const json = await exportJSON();
+    downloadJSON(json);
+  });
+
+  document.getElementById('newStoreOverlay').addEventListener('click', (e) => {
+    if (e.target.id === 'newStoreOverlay'){
+      closeNewStoreSheet();
+    }
+  });
+
+  seedStoresIfEmpty().then(renderHome);
+}
+
+init();
+</script>
+
+<!-- SW:START -->
+<script>
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(()=>{});
+</script>
+<!-- SW:END -->
+
+</body>
+</html>
