@@ -331,6 +331,85 @@
     opacity:0.95;
     transform:translateX(-50%) translateY(0);
   }
+
+  .progress-line{
+    text-align:center;
+    color:var(--muted);
+    font-size:13px;
+    padding-top:4px;
+    font-variant-numeric:tabular-nums;
+  }
+
+  .link-btn-sm{
+    font-size:15px;
+    padding:10px;
+    color:var(--muted);
+  }
+
+  /* 店の編集画面 */
+  .store-edit-row{
+    display:flex;
+    flex-wrap:wrap;
+    justify-content:space-between;
+    align-items:center;
+    gap:10px;
+    padding:14px 4px;
+    border-bottom:1px solid rgba(255,255,255,0.08);
+  }
+  .store-edit-name{
+    flex:1 1 100px;
+    font-size:17px;
+    font-weight:600;
+    min-height:44px;
+    display:flex;
+    align-items:center;
+  }
+  .store-edit-row input[type=text]{
+    flex:1 1 100px;
+    font-size:17px;
+    padding:10px;
+    border-radius:10px;
+    border:2px solid var(--accent-deep);
+    background:var(--bg);
+    color:var(--text);
+    min-height:44px;
+  }
+  .store-edit-actions{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    flex-wrap:wrap;
+  }
+  .store-edit-chip{
+    padding:10px 12px;
+    min-height:44px;
+    font-size:14px;
+    border-radius:12px;
+    background:var(--bg);
+    color:var(--muted);
+    border:2px solid transparent;
+    white-space:nowrap;
+  }
+  .store-edit-count{
+    color:var(--muted);
+    font-size:13px;
+    min-width:40px;
+    text-align:center;
+  }
+  .store-edit-delete{
+    background:transparent;
+    border:2px solid var(--danger);
+    color:var(--danger);
+    border-radius:12px;
+    padding:10px 12px;
+    min-height:44px;
+    font-size:14px;
+    white-space:nowrap;
+  }
+  .store-edit-delete.confirming{
+    background:var(--danger);
+    color:#fff;
+  }
 </style>
 </head>
 <body>
@@ -354,6 +433,7 @@
     <p class="section-label" style="margin-top:0;">最近飲んだの</p>
     <ul class="log-list" id="logList"></ul>
     <p class="count-footer" id="countFooter"></p>
+    <p class="progress-line" id="progressLine"></p>
   </section>
 
   <!-- ============ RATE ============ -->
@@ -372,6 +452,15 @@
       <button class="btn-store" id="btnStoreLater">⏭ あとで</button>
       <button class="btn-store" id="btnStoreNew">➕ 新しい店</button>
     </div>
+    <button class="link-btn link-btn-sm" id="btnStoreEditOpen">✏️ 店を編集</button>
+  </section>
+
+  <!-- ============ STORES EDIT ============ -->
+  <section id="stores" class="screen" hidden>
+    <button class="back-btn" id="btnStoresBack">← 戻る</button>
+    <h2>店の編集</h2>
+    <ul class="log-list" id="storesEditList"></ul>
+    <button class="btn-secondary" id="btnStoresNew" style="margin-top:12px;">➕ 新しい店</button>
   </section>
 
   <!-- ============ DONE ============ -->
@@ -416,9 +505,10 @@
   <div class="sheet">
     <h3>設定</h3>
     <div class="sheet-list">
+      <button class="link-btn" style="text-align:left;padding:16px 4px;" id="btnStoresEditFromSettings">店を編集</button>
       <button class="link-btn" style="text-align:left;padding:16px 4px;" id="btnExportJson">JSONを書き出す</button>
     </div>
-    <p class="version-text">v0.1 MVP</p>
+    <p class="version-text">v0.2</p>
   </div>
 </div>
 
@@ -539,7 +629,7 @@ function ratingInfo(v){
 /* =========================================================
    画面切り替え
 ========================================================= */
-const screens = ['home', 'rate', 'store', 'done', 'detail'];
+const screens = ['home', 'rate', 'store', 'done', 'detail', 'stores'];
 function showScreen(id){
   screens.forEach((s) => {
     document.getElementById(s).hidden = (s !== id);
@@ -684,7 +774,7 @@ async function finalizeSave(storeId){
   const drinkId = uuid();
   const drink = {
     id: drinkId,
-    kind: 'unknown',
+    kind: 'wine',  // 基本はワイン。日本酒・ビール等は将来ここを切り替える
     name: null,
     producer: null,
     region: null,
@@ -763,8 +853,10 @@ function goHomeFromDone(){
    新しい店シート
 ========================================================= */
 let newStoreType = 'retail';
+let newStoreMode = 'attach'; // 'attach'=評価フローで店を選んだ場合 / 'create'=店の編集画面から追加だけする場合
 
-function openNewStoreSheet(){
+function openNewStoreSheet(mode){
+  newStoreMode = mode || 'attach';
   document.getElementById('newStoreName').value = '';
   newStoreType = 'retail';
   document.getElementById('chipRetail').classList.add('selected');
@@ -792,7 +884,152 @@ async function saveNewStore(){
   };
   await dbPut('stores', store);
   closeNewStoreSheet();
-  await finalizeSave(store.id);
+  if (newStoreMode === 'create'){
+    toast('追加したで');
+    renderStoresEdit();
+  } else {
+    await finalizeSave(store.id);
+  }
+}
+
+/* =========================================================
+   店の編集画面
+========================================================= */
+let storesEditReturnTo = 'store'; // 開いた場所（'store' or 'home'）に戻るため
+
+function openStoresEdit(returnTo){
+  storesEditReturnTo = returnTo || 'store';
+  renderStoresEdit();
+  showScreen('stores');
+}
+
+async function closeStoresEdit(){
+  if (storesEditReturnTo === 'home'){
+    await renderHome();
+    showScreen('home');
+  } else {
+    await renderStoreScreen();
+    showScreen('store');
+  }
+}
+
+async function renderStoresEdit(){
+  const [stores, logs] = await Promise.all([dbGetAll('stores'), dbGetAll('logs')]);
+  stores.sort((a, b) => (b.lastUsedAt || 0) - (a.lastUsedAt || 0));
+
+  const countMap = new Map();
+  logs.forEach((l) => {
+    if (!l.storeId) return;
+    countMap.set(l.storeId, (countMap.get(l.storeId) || 0) + 1);
+  });
+
+  const list = document.getElementById('storesEditList');
+  list.innerHTML = '';
+
+  if (stores.length === 0){
+    const li = document.createElement('li');
+    li.className = 'empty-state';
+    li.textContent = 'まだ店がないで';
+    list.appendChild(li);
+    return;
+  }
+
+  stores.forEach((s) => {
+    const li = document.createElement('li');
+    li.className = 'store-edit-row';
+
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'store-edit-name';
+    nameSpan.textContent = s.name;
+    nameSpan.addEventListener('click', () => startRenameStore(li, s));
+
+    const actions = document.createElement('span');
+    actions.className = 'store-edit-actions';
+
+    const chipBtn = document.createElement('button');
+    chipBtn.className = 'store-edit-chip';
+    chipBtn.textContent = s.type === 'restaurant' ? '🍽 レストラン' : '🏪 小売';
+    chipBtn.addEventListener('click', async () => {
+      s.type = s.type === 'restaurant' ? 'retail' : 'restaurant';
+      await dbPut('stores', s);
+      toast('変えたで');
+      renderStoresEdit();
+    });
+
+    const countSpan = document.createElement('span');
+    countSpan.className = 'store-edit-count';
+    countSpan.textContent = `${countMap.get(s.id) || 0}回`;
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'store-edit-delete';
+    delBtn.textContent = '消す';
+    let armed = false;
+    let armTimer = null;
+    delBtn.addEventListener('click', async () => {
+      if (!armed){
+        armed = true;
+        delBtn.textContent = 'ほんまに消す？';
+        delBtn.classList.add('confirming');
+        clearTimeout(armTimer);
+        armTimer = setTimeout(() => {
+          armed = false;
+          delBtn.textContent = '消す';
+          delBtn.classList.remove('confirming');
+        }, 3000);
+        return;
+      }
+      clearTimeout(armTimer);
+      await deleteStoreCascade(s.id);
+      toast('消したで');
+      renderStoresEdit();
+    });
+
+    actions.appendChild(chipBtn);
+    actions.appendChild(countSpan);
+    actions.appendChild(delBtn);
+    li.appendChild(nameSpan);
+    li.appendChild(actions);
+    list.appendChild(li);
+  });
+}
+
+function startRenameStore(li, s){
+  const nameSpan = li.querySelector('.store-edit-name');
+  if (!nameSpan) return;
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.setAttribute('enterkeyhint', 'done');
+  input.value = s.name;
+  nameSpan.replaceWith(input);
+  input.focus();
+  input.select();
+
+  let done = false;
+  const finish = async () => {
+    if (done) return;
+    done = true;
+    const newName = input.value.trim();
+    if (newName && newName !== s.name){
+      s.name = newName;
+      await dbPut('stores', s);
+      toast('変えたで');
+    }
+    renderStoresEdit();
+  };
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter'){ e.preventDefault(); finish(); }
+  });
+  input.addEventListener('blur', finish);
+}
+
+async function deleteStoreCascade(storeId){
+  const logs = await dbGetAll('logs');
+  const affected = logs.filter((l) => l.storeId === storeId);
+  for (const l of affected){
+    l.storeId = null;
+    await dbPut('logs', l);
+  }
+  await dbDelete('stores', storeId);
 }
 
 /* =========================================================
@@ -852,6 +1089,14 @@ async function renderHome(){
   }
 
   document.getElementById('countFooter').textContent = `これまで ${logs.length} 本`;
+
+  const ratedCount = logs.filter((l) => l.rating != null).length;
+  const progressEl = document.getElementById('progressLine');
+  if (ratedCount < 10){
+    progressEl.textContent = `好みの言語化まで あと ${10 - ratedCount} 本`;
+  } else {
+    progressEl.textContent = '言語化できる本数になったで（次のアップデートで出すよ）';
+  }
 }
 
 /* =========================================================
@@ -1019,7 +1264,11 @@ function init(){
   });
 
   document.getElementById('btnStoreLater').addEventListener('click', () => finalizeSave(null));
-  document.getElementById('btnStoreNew').addEventListener('click', openNewStoreSheet);
+  document.getElementById('btnStoreNew').addEventListener('click', () => openNewStoreSheet('attach'));
+  document.getElementById('btnStoreEditOpen').addEventListener('click', () => openStoresEdit('store'));
+
+  document.getElementById('btnStoresBack').addEventListener('click', closeStoresEdit);
+  document.getElementById('btnStoresNew').addEventListener('click', () => openNewStoreSheet('create'));
 
   document.getElementById('chipRetail').addEventListener('click', () => {
     newStoreType = 'retail';
@@ -1052,6 +1301,10 @@ function init(){
   document.getElementById('btnExportJson').addEventListener('click', async () => {
     const json = await exportJSON();
     downloadJSON(json);
+  });
+  document.getElementById('btnStoresEditFromSettings').addEventListener('click', () => {
+    document.getElementById('settingsOverlay').hidden = true;
+    openStoresEdit('home');
   });
 
   document.getElementById('newStoreOverlay').addEventListener('click', (e) => {
