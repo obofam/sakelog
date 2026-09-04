@@ -1,5 +1,5 @@
 // 酒ログ Service Worker — シンプルな cache-first
-const CACHE_NAME = 'sakelog-v2';
+const CACHE_NAME = 'sakelog-v3';
 const ASSETS = [
   './',
   './index.html',
