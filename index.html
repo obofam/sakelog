@@ -164,6 +164,9 @@
   .log-rating{font-size:16px;font-weight:700;}
   .log-store{color:var(--muted);font-size:14px;margin-top:2px;}
   .log-date{color:var(--muted);font-size:13px;margin-top:2px;}
+  .log-name{font-size:16px;font-weight:700;display:block;}
+  .log-name.muted{color:var(--muted);font-weight:500;}
+  .log-sub{color:var(--muted);font-size:13px;margin-top:3px;display:block;}
 
   .empty-state{
     color:var(--muted);
@@ -243,6 +246,39 @@
   }
   .detail-meta{color:var(--muted);font-size:15px;margin-bottom:16px;text-align:center;}
   .section-label{font-size:15px;color:var(--muted);margin:18px 0 8px;font-weight:600;}
+
+  /* ラベル読み取り結果ブロック（詳細画面） */
+  .drink-info{
+    background:var(--surface);
+    border-radius:16px;
+    padding:16px;
+    margin-bottom:6px;
+  }
+  .drink-info-name{font-size:19px;font-weight:700;margin:0 0 6px;}
+  .drink-info-name.muted{color:var(--muted);font-weight:500;}
+  .drink-info-sub{color:var(--muted);font-size:14px;margin:2px 0;}
+  .drink-info-color-chip{
+    display:inline-block;
+    padding:4px 12px;
+    border-radius:100px;
+    background:var(--bg);
+    font-size:13px;
+    margin:8px 0 4px;
+  }
+  .drink-info-importer{font-size:14px;color:var(--muted);margin:6px 0 0;}
+  .drink-info-error{font-size:13px;color:var(--danger);margin:8px 0 0;}
+  .drink-info-actions{margin-top:12px;display:flex;gap:16px;flex-wrap:wrap;}
+  .drink-info-edit input[type=text]{
+    width:100%;
+    font-size:16px;
+    padding:12px;
+    border-radius:12px;
+    border:2px solid var(--accent-deep);
+    background:var(--bg);
+    color:var(--text);
+    margin-bottom:10px;
+  }
+  .drink-info-edit .chip{flex:0 0 auto;padding:10px 14px;}
   .btn-danger{
     width:100%;
     min-height:64px;
@@ -277,7 +313,7 @@
     padding:24px calc(env(safe-area-inset-left) + 20px) calc(env(safe-area-inset-bottom) + 24px) calc(env(safe-area-inset-right) + 20px);
   }
   .sheet h3{margin:0 0 16px;font-size:20px;}
-  .sheet input[type=text]{
+  .sheet input[type=text], .sheet input[type=password]{
     width:100%;
     font-size:19px;
     padding:16px;
@@ -341,6 +377,25 @@
     font-size:13px;
     padding-top:4px;
     font-variant-numeric:tabular-nums;
+  }
+
+  /* 好みプロフィールカード（ホーム） */
+  .profile-card{
+    background:var(--surface);
+    border-radius:18px;
+    padding:18px;
+    margin-top:16px;
+  }
+  .profile-card h3{margin:0 0 10px;font-size:18px;}
+  .profile-summary{font-size:15px;line-height:1.7;margin:0 0 14px;}
+  .profile-label{font-size:13px;color:var(--muted);margin:12px 0 4px;font-weight:600;}
+  .profile-quote{font-size:16px;font-weight:700;margin:0;}
+  .profile-axis{font-size:15px;margin:2px 0;line-height:1.6;}
+  .profile-adventure{font-size:15px;margin:0;line-height:1.6;}
+  .profile-footer{
+    display:flex;justify-content:space-between;align-items:center;
+    margin-top:16px;
+    color:var(--muted);font-size:13px;
   }
 
   .link-btn-sm{
@@ -437,6 +492,8 @@
     <ul class="log-list" id="logList"></ul>
     <p class="count-footer" id="countFooter"></p>
     <p class="progress-line" id="progressLine"></p>
+    <button class="btn-primary" id="btnGenProfile" hidden style="margin-top:14px;">🍷 好みを言語化する</button>
+    <div class="profile-card" id="profileCard" hidden></div>
   </section>
 
   <!-- ============ RATE ============ -->
@@ -481,6 +538,7 @@
     <button class="back-btn" id="btnDetailBack">← 戻る</button>
     <img class="detail-photo" id="detailPhoto" alt="">
     <p class="detail-meta" id="detailMeta"></p>
+    <div class="drink-info" id="drinkInfo"></div>
     <p class="section-label" style="margin-top:0;">評価</p>
     <div id="detailRatingButtons"></div>
     <p class="section-label">お店</p>
@@ -509,9 +567,18 @@
     <h3>設定</h3>
     <div class="sheet-list">
       <button class="link-btn" style="text-align:left;padding:16px 4px;" id="btnStoresEditFromSettings">店を編集</button>
+      <button class="link-btn" style="text-align:left;padding:16px 4px;" id="btnReadUnread">📖 未読のラベルをまとめて読み取る</button>
       <button class="link-btn" style="text-align:left;padding:16px 4px;" id="btnExportJson">JSONを書き出す</button>
     </div>
-    <p class="version-text">v0.2</p>
+    <p class="section-label" style="margin-top:4px;">Gemini APIキー</p>
+    <input type="password" id="geminiKeyInput" autocomplete="off" placeholder="APIキーを貼り付け">
+    <div class="grid2" style="margin-bottom:8px;">
+      <button class="btn-secondary" id="btnSaveGeminiKey">保存</button>
+      <button class="btn-secondary" id="btnClearGeminiKey" hidden>消す</button>
+    </div>
+    <p class="detail-meta" style="text-align:left;margin-bottom:4px;" id="geminiKeyStatus"></p>
+    <p class="detail-meta" style="text-align:left;">キーはこの端末の中にだけ保存されるよ</p>
+    <p class="version-text">v0.3</p>
   </div>
 </div>
 
@@ -526,7 +593,7 @@
    （将来追加予定: fuzzy＝あいまい記録用, profile＝好み分析用。MVPでは未実装）
 ========================================================= */
 const DB_NAME = 'sakelog';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 let dbPromise = null;
 
 function openDB(){
@@ -546,6 +613,10 @@ function openDB(){
       if (!db.objectStoreNames.contains('stores')){
         const stores = db.createObjectStore('stores', { keyPath: 'id' });
         stores.createIndex('lastUsedAt', 'lastUsedAt');
+      }
+      // v2で追加: 好みの言語化プロフィール（既存データはそのまま）
+      if (!db.objectStoreNames.contains('profile')){
+        db.createObjectStore('profile', { keyPath: 'id' });
       }
     };
     req.onsuccess = (e) => resolve(e.target.result);
@@ -627,6 +698,118 @@ const RATINGS = [
 ];
 function ratingInfo(v){
   return RATINGS.find((r) => r.value === v) || RATINGS[RATINGS.length - 1];
+}
+
+/* =========================================================
+   小さいユーティリティ
+========================================================= */
+function escapeHtml(s){
+  if (s == null) return '';
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+function sleep(ms){
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+function colorLabel(c){
+  return { red:'赤', white:'白', rose:'ロゼ', sparkling:'スパークリング', orange:'オレンジ' }[c] || null;
+}
+
+/* =========================================================
+   Gemini 連携（ラベル読み取り・好みの言語化）
+   キーは localStorage['sakelog.geminiKey'] にこの端末だけで保存。
+   通信先は generativelanguage.googleapis.com のみ。
+========================================================= */
+const GEMINI_MODEL = 'gemini-3.6-flash'; // 動作確認済み（2026-09時点。gemini-2.5-flash/2.0-flashは廃止済みだった）
+
+function getGeminiKey(){
+  try { return (localStorage.getItem('sakelog.geminiKey') || '').trim(); } catch (e) { return ''; }
+}
+function setGeminiKey(key){
+  try {
+    if (key) localStorage.setItem('sakelog.geminiKey', key);
+    else localStorage.removeItem('sakelog.geminiKey');
+  } catch (e) { /* localStorage不可な環境は無視 */ }
+}
+
+function blobToBase64(blob){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result || '';
+      const idx = result.indexOf(',');
+      resolve(idx >= 0 ? result.slice(idx + 1) : result);
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+// エラーは { type: 'nokey' | 'auth' | 'network' | 'other' } の形で投げる
+async function callGemini(parts){
+  const key = getGeminiKey();
+  if (!key) throw { type: 'nokey' };
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(key)}`;
+  const body = {
+    contents: [{ parts }],
+    generationConfig: { response_mime_type: 'application/json' }
+  };
+  let res;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+  } catch (e) {
+    throw { type: 'network' };
+  }
+  if (res.status === 401 || res.status === 403) throw { type: 'auth' };
+  if (!res.ok) throw { type: 'other', status: res.status };
+  let data;
+  try { data = await res.json(); } catch (e) { throw { type: 'other' }; }
+  const text = data && data.candidates && data.candidates[0]
+    && data.candidates[0].content && data.candidates[0].content.parts
+    && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text;
+  if (!text) throw { type: 'other' };
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    throw { type: 'other' };
+  }
+}
+
+const LABEL_PROMPT = `このお酒のラベル写真から情報を読み取って、次のJSON形式だけで答えてください。説明文は不要です。わからない項目はnullにしてください。値を勝手にでっち上げないでください。
+{
+  "kind": "wine|sake|beer|shochu|whisky|spirits|liqueur|other のいずれか",
+  "name": "銘柄名",
+  "producer": "生産者",
+  "country": "生産国",
+  "region": "地域",
+  "grape": "品種（日本酒なら米/酒質、ビールならスタイル）",
+  "vintage": "年（数値、不明ならnull）",
+  "color": "red|white|rose|sparkling|orange のいずれか。ワイン以外はnull",
+  "importer": "裏ラベルに輸入元の記載があればそれ。見えなければnull",
+  "price_hint": null,
+  "confidence": "0〜1の数値",
+  "note": "一言コメント"
+}`;
+
+async function callGeminiVision(photoBlob){
+  const base64 = await blobToBase64(photoBlob);
+  return callGemini([
+    { inline_data: { mime_type: 'image/jpeg', data: base64 } },
+    { text: LABEL_PROMPT }
+  ]);
+}
+async function callGeminiText(prompt){
+  return callGemini([{ text: prompt }]);
+}
+
+function geminiErrorMessage(errType){
+  if (errType === 'auth') return 'キーが違うみたい';
+  if (errType === 'network') return 'オフラインかも。あとで読むよ';
+  if (errType === 'nokey') return null;
+  return '読めなかった';
 }
 
 /* =========================================================
@@ -777,15 +960,20 @@ async function finalizeSave(storeId){
   const drinkId = uuid();
   const drink = {
     id: drinkId,
-    kind: 'wine',  // 基本はワイン。日本酒・ビール等は将来ここを切り替える
+    kind: 'wine',  // 基本はワイン。日本酒・ビール等は将来ここを切り替える（ラベル読み取りで上書きされる）
     name: null,
     producer: null,
+    country: null,
     region: null,
     grape: null,
     vintage: null,
     color: null,
     importer: null,
     confirmed: false,
+    readAt: null,
+    readConfidence: null,
+    readNote: null,
+    readError: null,
     photo: pending.photo,
     thumb: pending.thumb,
     createdAt: Date.now()
@@ -818,6 +1006,10 @@ async function finalizeSave(storeId){
 
   showDoneScreen(drink, log, storeName);
 
+  if (getGeminiKey()){
+    autoReadLabel(drinkId).catch(() => {});
+  }
+
   saving = false;
   setStoreButtonsDisabled(false);
 }
@@ -826,6 +1018,119 @@ function setStoreButtonsDisabled(disabled){
   document.querySelectorAll('#storeGrid button, #btnStoreLater, #btnStoreNew').forEach((b) => {
     b.disabled = disabled;
   });
+}
+
+/* =========================================================
+   ラベル読み取り（Gemini）
+========================================================= */
+
+// drink オブジェクトにGeminiの読み取り結果を書き込んで保存する共通処理
+async function fetchLabelForDrink(drink){
+  try {
+    const result = await callGeminiVision(drink.photo);
+    if (result.kind) drink.kind = result.kind;
+    drink.name = result.name || null;
+    drink.producer = result.producer || null;
+    drink.country = result.country || null;
+    drink.region = result.region || null;
+    drink.grape = result.grape || null;
+    const vintageNum = parseInt(result.vintage, 10);
+    drink.vintage = (result.vintage != null && !isNaN(vintageNum)) ? vintageNum : null;
+    drink.color = result.color || null;
+    drink.importer = result.importer || null;
+    drink.confirmed = false;
+    drink.readAt = Date.now();
+    drink.readConfidence = (typeof result.confidence === 'number') ? result.confidence : null;
+    drink.readNote = result.note || null;
+    drink.readError = null;
+    await dbPut('drinks', drink);
+    return { ok: true, drink };
+  } catch (err) {
+    const errType = (err && err.type) || 'other';
+    drink.readAt = Date.now();
+    drink.readError = errType;
+    await dbPut('drinks', drink);
+    return { ok: false, errType };
+  }
+}
+
+// 保存直後に自動で読む（バックグラウンド・失敗は無言）
+async function autoReadLabel(drinkId){
+  const drink = await dbGet('drinks', drinkId);
+  if (!drink) return;
+  toast('ラベル読んでるよ…');
+  const res = await fetchLabelForDrink(drink);
+  if (res.ok){
+    toast(`読めたよ：${res.drink.name || '(名前なし)'}`);
+    if (!document.getElementById('home').hidden) renderHome();
+    if (!document.getElementById('detail').hidden && detailLogId){
+      const log = await dbGet('logs', detailLogId);
+      if (log && log.drinkId === drinkId) renderDetail();
+    }
+  }
+  // 失敗時は静かに（readErrorだけ記録済み）
+}
+
+// 詳細画面の「🔁 ラベルを読み直す」
+async function rereadLabelFromDetail(){
+  if (!getGeminiKey()){
+    toast('設定でGeminiキーを入れてね');
+    return;
+  }
+  const log = await dbGet('logs', detailLogId);
+  if (!log) return;
+  const drink = await dbGet('drinks', log.drinkId);
+  if (!drink) return;
+  const btn = document.getElementById('btnRereadLabel');
+  const editBtn = document.getElementById('btnEditDrink');
+  if (btn){ btn.disabled = true; btn.textContent = '読んでるよ…'; }
+  if (editBtn) editBtn.disabled = true;
+  const res = await fetchLabelForDrink(drink);
+  if (res.ok){
+    toast(`読めたよ：${res.drink.name || '(名前なし)'}`);
+  } else {
+    const msg = geminiErrorMessage(res.errType);
+    if (msg) toast(msg);
+  }
+  await renderDetail();
+}
+
+// 設定シートの「📖 未読のラベルをまとめて読み取る」
+async function readUnreadLabelsBatch(){
+  if (!getGeminiKey()){
+    toast('設定でGeminiキーを入れてね');
+    return;
+  }
+  const btn = document.getElementById('btnReadUnread');
+  const ONE_DAY = 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  const drinks = await dbGetAll('drinks');
+  const targets = drinks.filter((d) => {
+    if (d.name != null) return false;
+    if (!d.readError) return true;
+    return !d.readAt || (now - d.readAt > ONE_DAY);
+  });
+  if (targets.length === 0){
+    toast('未読のラベルはないよ');
+    return;
+  }
+  btn.disabled = true;
+  let okCount = 0;
+  for (let i = 0; i < targets.length; i++){
+    btn.textContent = `${i + 1}/${targets.length} 読み取り中…`;
+    const res = await fetchLabelForDrink(targets[i]);
+    if (res.ok){
+      okCount++;
+    } else if (res.errType === 'auth'){
+      toast(geminiErrorMessage(res.errType));
+      break;
+    }
+    if (i < targets.length - 1) await sleep(400);
+  }
+  btn.disabled = false;
+  btn.textContent = '📖 未読のラベルをまとめて読み取る';
+  toast(`${okCount}件読み取ったよ`);
+  renderHome();
 }
 
 /* =========================================================
@@ -1077,12 +1382,16 @@ async function renderHome(){
       const thumbUrl = URL.createObjectURL(drink.thumb);
       homeThumbUrls.push(thumbUrl);
 
+      const nameLine = drink.name
+        ? `<span class="log-name">${escapeHtml(drink.name)}</span>`
+        : `<span class="log-name muted">名前 まだ</span>`;
+      const storeName = store ? escapeHtml(store.name) : '店：あとで';
+
       btn.innerHTML = `
         <img class="log-thumb" src="${thumbUrl}" alt="">
         <span class="log-info">
-          <span class="log-rating">${info.emoji} ${info.label}</span>
-          <span class="log-store">${store ? store.name : '店：あとで'}</span>
-          <span class="log-date">${fmtDate(log.drankAt)}</span>
+          ${nameLine}
+          <span class="log-sub">${info.emoji} ${info.label} · ${storeName} · ${fmtDate(log.drankAt)}</span>
         </span>
       `;
       btn.addEventListener('click', () => openDetail(log.id));
@@ -1093,12 +1402,195 @@ async function renderHome(){
 
   document.getElementById('countFooter').textContent = `これまで ${logs.length} 本`;
 
-  const ratedCount = logs.filter((l) => l.rating != null).length;
+  await updateHomeProgressAndProfile(logs, drinksArr);
+}
+
+/* =========================================================
+   好みの言語化（プロフィール）
+========================================================= */
+async function updateHomeProgressAndProfile(logs, drinksArr){
+  const drinkIdsWithLog = new Set(logs.map((l) => l.drinkId));
+  const readCount = drinksArr.filter((d) => d.name != null && drinkIdsWithLog.has(d.id)).length;
+
   const progressEl = document.getElementById('progressLine');
-  if (ratedCount < 10){
-    progressEl.textContent = `好みの言語化まで あと ${10 - ratedCount} 本`;
+  const genBtn = document.getElementById('btnGenProfile');
+  const cardWrap = document.getElementById('profileCard');
+
+  if (readCount < 10){
+    let msg = `言語化まで ラベル読み取り済み ${readCount}/10 本`;
+    if (!getGeminiKey()) msg += '（設定でGeminiキーを入れてね）';
+    progressEl.textContent = msg;
+    progressEl.hidden = false;
+    genBtn.hidden = true;
+    cardWrap.hidden = true;
+    return;
+  }
+
+  progressEl.hidden = true;
+  const profile = await dbGet('profile', 'me');
+  if (!profile){
+    genBtn.hidden = false;
+    cardWrap.hidden = true;
   } else {
-    progressEl.textContent = '言語化できる本数になったよ（次のアップデートで）';
+    genBtn.hidden = true;
+    renderProfileCard(profile);
+    cardWrap.hidden = false;
+  }
+}
+
+function renderProfileCard(profile){
+  const wrap = document.getElementById('profileCard');
+  const dateStr = profile.generatedAt ? fmtDate(profile.generatedAt) : '';
+  wrap.innerHTML = `
+    <h3>あなたの好み</h3>
+    <p class="profile-summary">${escapeHtml(profile.summary || '')}</p>
+    <p class="profile-label">お店で言うなら</p>
+    <p class="profile-quote">「${escapeHtml(profile.sommelier || '')}」</p>
+    <p class="profile-label">間違いない選択軸</p>
+    <p class="profile-axis">${escapeHtml(profile.axis1 || '')}</p>
+    <p class="profile-axis">${escapeHtml(profile.axis2 || '')}</p>
+    <p class="profile-label">たまには</p>
+    <p class="profile-adventure">${escapeHtml(profile.adventure || '')}</p>
+    <div class="profile-footer">
+      <span>${profile.basedOn || 0}本から · ${dateStr}</span>
+      <button class="link-btn-sm" id="btnRegenProfile">🔄 更新</button>
+    </div>
+  `;
+  document.getElementById('btnRegenProfile').addEventListener('click', generateProfile);
+}
+
+// 属性ごとの集計対象（read済みの銘柄×ログの組）
+const PROFILE_ATTRS = [
+  { label: '色', get: (d, l, s) => d.color },
+  { label: '国', get: (d, l, s) => d.country },
+  { label: '地域', get: (d, l, s) => d.region },
+  { label: '品種', get: (d, l, s) => d.grape },
+  { label: '輸入元', get: (d, l, s) => d.importer },
+  { label: '種類', get: (d, l, s) => d.kind },
+  { label: '店', get: (d, l, s) => (s ? s.name : null) },
+  { label: '店タイプ', get: (d, l, s) => (s ? (s.type === 'restaurant' ? 'レストラン' : '小売') : null) }
+];
+
+async function buildProfileDataset(){
+  const [drinksArr, logsArr, storesArr] = await Promise.all([
+    dbGetAll('drinks'), dbGetAll('logs'), dbGetAll('stores')
+  ]);
+  const storeMap = new Map(storesArr.map((s) => [s.id, s]));
+  const drinkMap = new Map(drinksArr.map((d) => [d.id, d]));
+  const rows = [];
+  logsArr.forEach((log) => {
+    const drink = drinkMap.get(log.drinkId);
+    if (!drink || drink.name == null) return;
+    const store = log.storeId ? storeMap.get(log.storeId) : null;
+    rows.push({ drink, log, store });
+  });
+  return rows;
+}
+
+function computeAttributeStats(rows){
+  const results = [];
+  PROFILE_ATTRS.forEach((attr) => {
+    const byValue = new Map();
+    rows.forEach(({ drink, log, store }) => {
+      const v = attr.get(drink, log, store);
+      if (v == null || v === '') return;
+      if (!byValue.has(v)) byValue.set(v, { count: 0, hit3: 0, hit4: 0 });
+      const e = byValue.get(v);
+      e.count++;
+      if (log.rating >= 3) e.hit3++;
+      if (log.rating === 4) e.hit4++;
+    });
+    byValue.forEach((stat, value) => {
+      if (stat.count < 2) return;
+      results.push({
+        attrLabel: attr.label,
+        value,
+        count: stat.count,
+        hitRate3: stat.hit3 / stat.count,
+        hitRate4: stat.hit4 / stat.count
+      });
+    });
+  });
+  results.sort((a, b) => (b.hitRate3 - a.hitRate3) || (b.count - a.count));
+  return results.slice(0, 12);
+}
+
+function buildDrinkTableText(rows){
+  const lines = ['name | country/region | grape | color | importer | vintage | store | rating(1-4)'];
+  rows.forEach(({ drink, log, store }) => {
+    const countryRegion = [drink.country, drink.region].filter(Boolean).join('/') || '不明';
+    lines.push([
+      drink.name || '不明',
+      countryRegion,
+      drink.grape || '不明',
+      drink.color || '-',
+      drink.importer || '不明',
+      drink.vintage != null ? drink.vintage : '不明',
+      store ? store.name : '不明',
+      log.rating
+    ].join(' | '));
+  });
+  return lines.join('\n');
+}
+
+function buildStatsText(stats){
+  if (stats.length === 0) return '（まだ2回以上出てきた属性が少なく、統計的にはっきり言える傾向はまだ薄い）';
+  return stats.map((s) => `${s.attrLabel}=${s.value}：${s.count}回登場、うまい以上率${Math.round(s.hitRate3 * 100)}%、超好き率${Math.round(s.hitRate4 * 100)}%`).join('\n');
+}
+
+const PROFILE_PROMPT_HEADER = `以下はあるユーザーのお酒の試飲記録です。データをもとに、その人の好みを言語化してください。
+条件:
+- データが少ない属性は断定しないこと
+- 店の名前は実データにあるものだけを使うこと。存在しない銘柄や店をでっち上げないこと
+- 標準語のくだけた口調（「〜だよ」「〜だね」。関西弁は使わない）
+- summary: 好みの言語化。2〜3文。点数の話ではなく「あなたはこういう人」という言い方
+- sommelier: 店やワインショップでそのまま言える一言（例「果実味あって渋み控えめの、ローヌ系シラーみたいなやつ」）
+- axis1, axis2: 「棚で何を見れば外れないか」を、実際のヒット率の数字を根拠にして1行ずつ（例「品種より輸入元。エノテカ扱いなら8割当たってる」）
+- adventure: まだ飲んでいないが好みの延長線上にある方向性を1つ。買える店の種類も添える
+次のJSON形式だけで回答してください（説明文は不要）：
+{"summary":"...","sommelier":"...","axis1":"...","axis2":"...","adventure":"..."}
+
+## 試飲記録
+`;
+
+async function generateProfile(){
+  if (!getGeminiKey()){
+    toast('設定でGeminiキーを入れてね');
+    return;
+  }
+  const genBtn = document.getElementById('btnGenProfile');
+  const regenBtn = document.getElementById('btnRegenProfile');
+  if (genBtn && !genBtn.hidden){ genBtn.disabled = true; genBtn.textContent = '考え中…'; }
+  if (regenBtn){ regenBtn.disabled = true; regenBtn.textContent = '考え中…'; }
+
+  try {
+    const rows = await buildProfileDataset();
+    if (rows.length < 10){
+      toast('まだデータが足りないよ');
+      return;
+    }
+    const stats = computeAttributeStats(rows);
+    const prompt = PROFILE_PROMPT_HEADER + buildDrinkTableText(rows)
+      + '\n\n## 計算済みの統計（属性ごとの登場回数とヒット率）\n' + buildStatsText(stats);
+    const result = await callGeminiText(prompt);
+    const profile = {
+      id: 'me',
+      summary: result.summary || null,
+      sommelier: result.sommelier || null,
+      axis1: result.axis1 || null,
+      axis2: result.axis2 || null,
+      adventure: result.adventure || null,
+      basedOn: rows.length,
+      generatedAt: Date.now()
+    };
+    await dbPut('profile', profile);
+    toast('言語化できたよ');
+    await renderHome();
+  } catch (err) {
+    const msg = geminiErrorMessage((err && err.type) || 'other');
+    toast(msg || '読めなかった');
+  } finally {
+    if (genBtn){ genBtn.disabled = false; genBtn.textContent = '🍷 好みを言語化する'; }
   }
 }
 
@@ -1108,10 +1600,99 @@ async function renderHome(){
 let detailLogId = null;
 let deleteConfirmTimer = null;
 let deleteArmed = false;
+let detailEditing = false;
+
+// ラベル情報ブロック（表示 / 編集の2モード）
+function renderDrinkInfo(drink){
+  const wrap = document.getElementById('drinkInfo');
+  if (!drink){ wrap.innerHTML = ''; return; }
+
+  if (detailEditing){
+    const colors = ['red', 'white', 'rose', 'sparkling', 'orange'];
+    wrap.innerHTML = `
+      <div class="drink-info-edit">
+        <input type="text" id="editName" placeholder="銘柄名" value="${escapeHtml(drink.name || '')}">
+        <input type="text" id="editProducer" placeholder="生産者" value="${escapeHtml(drink.producer || '')}">
+        <input type="text" id="editCountry" placeholder="国" value="${escapeHtml(drink.country || '')}">
+        <input type="text" id="editRegion" placeholder="地域" value="${escapeHtml(drink.region || '')}">
+        <input type="text" id="editGrape" placeholder="品種・原料など" value="${escapeHtml(drink.grape || '')}">
+        <input type="text" id="editVintage" placeholder="年（例：2021）" value="${drink.vintage != null ? drink.vintage : ''}" inputmode="numeric">
+        <div class="chip-row" id="editColorChips" style="flex-wrap:wrap;">
+          ${colors.map((c) => `<button type="button" class="chip${drink.color === c ? ' selected' : ''}" data-color="${c}">${colorLabel(c)}</button>`).join('')}
+        </div>
+        <input type="text" id="editImporter" placeholder="輸入元" value="${escapeHtml(drink.importer || '')}">
+        <div class="grid2">
+          <button class="btn-secondary" id="btnCancelEditDrink">やめる</button>
+          <button class="btn-primary" id="btnSaveEditDrink" style="margin-bottom:0;">保存</button>
+        </div>
+      </div>
+    `;
+    let editColor = drink.color || null;
+    wrap.querySelectorAll('#editColorChips .chip').forEach((chip) => {
+      chip.addEventListener('click', () => {
+        editColor = (chip.dataset.color === editColor) ? null : chip.dataset.color;
+        wrap.querySelectorAll('#editColorChips .chip').forEach((c2) => {
+          c2.classList.toggle('selected', c2.dataset.color === editColor);
+        });
+      });
+    });
+    document.getElementById('btnCancelEditDrink').addEventListener('click', () => {
+      detailEditing = false;
+      renderDrinkInfo(drink);
+    });
+    document.getElementById('btnSaveEditDrink').addEventListener('click', async () => {
+      const vintageRaw = document.getElementById('editVintage').value.trim();
+      const vintageNum = parseInt(vintageRaw, 10);
+      drink.name = document.getElementById('editName').value.trim() || null;
+      drink.producer = document.getElementById('editProducer').value.trim() || null;
+      drink.country = document.getElementById('editCountry').value.trim() || null;
+      drink.region = document.getElementById('editRegion').value.trim() || null;
+      drink.grape = document.getElementById('editGrape').value.trim() || null;
+      drink.vintage = (vintageRaw && !isNaN(vintageNum)) ? vintageNum : null;
+      drink.importer = document.getElementById('editImporter').value.trim() || null;
+      drink.color = editColor;
+      drink.confirmed = true;
+      await dbPut('drinks', drink);
+      toast('直したよ');
+      detailEditing = false;
+      renderHome();
+      renderDrinkInfo(drink);
+    });
+    return;
+  }
+
+  const nameLine = drink.name
+    ? `<p class="drink-info-name">${escapeHtml(drink.name)}</p>`
+    : `<p class="drink-info-name muted">名前 まだ</p>`;
+  const producerCountry = [drink.producer, [drink.country, drink.region].filter(Boolean).join(' ')].filter(Boolean).join(' · ');
+  const grapeVintage = [drink.grape, drink.vintage].filter(Boolean).join(' · ');
+  const colorChip = drink.color ? `<span class="drink-info-color-chip">${colorLabel(drink.color)}</span>` : '';
+  const importerLine = drink.importer ? `<p class="drink-info-importer">輸入元: ${escapeHtml(drink.importer)}</p>` : '';
+  const errorLine = drink.readError ? `<p class="drink-info-error">前回読み取り失敗（${escapeHtml(geminiErrorMessage(drink.readError) || drink.readError)}）</p>` : '';
+
+  wrap.innerHTML = `
+    ${nameLine}
+    ${producerCountry ? `<p class="drink-info-sub">${escapeHtml(producerCountry)}</p>` : ''}
+    ${grapeVintage ? `<p class="drink-info-sub">${escapeHtml(grapeVintage)}</p>` : ''}
+    ${colorChip}
+    ${importerLine}
+    <div class="drink-info-actions">
+      <button class="link-btn-sm" id="btnEditDrink">✏️ 直す</button>
+      <button class="link-btn-sm" id="btnRereadLabel">🔁 ラベルを読み直す</button>
+    </div>
+    ${errorLine}
+  `;
+  document.getElementById('btnEditDrink').addEventListener('click', () => {
+    detailEditing = true;
+    renderDrinkInfo(drink);
+  });
+  document.getElementById('btnRereadLabel').addEventListener('click', rereadLabelFromDetail);
+}
 
 async function openDetail(logId){
   detailLogId = logId;
   deleteArmed = false;
+  detailEditing = false;
   clearTimeout(deleteConfirmTimer);
   await renderDetail();
   showScreen('detail');
@@ -1127,6 +1708,8 @@ async function renderDetail(){
   detailPhotoUrl = URL.createObjectURL(drink.photo);
   document.getElementById('detailPhoto').src = detailPhotoUrl;
   document.getElementById('detailMeta').textContent = fmtDate(log.drankAt);
+
+  renderDrinkInfo(drink);
 
   // 評価ボタン
   const rWrap = document.getElementById('detailRatingButtons');
@@ -1218,15 +1801,37 @@ async function handleDeleteClick(){
 }
 
 /* =========================================================
-   設定シート / JSON書き出し
+   設定シート / Gemini APIキー / JSON書き出し
 ========================================================= */
+function maskedKeyLabel(key){
+  const tail = key.slice(-4);
+  return `設定済み（••••${tail}）`;
+}
+function renderGeminiKeyUI(){
+  const key = getGeminiKey();
+  const statusEl = document.getElementById('geminiKeyStatus');
+  const clearBtn = document.getElementById('btnClearGeminiKey');
+  const input = document.getElementById('geminiKeyInput');
+  input.value = '';
+  if (key){
+    statusEl.textContent = maskedKeyLabel(key);
+    clearBtn.hidden = false;
+    input.placeholder = 'キーを変える場合はここに入力';
+  } else {
+    statusEl.textContent = '未設定だよ';
+    clearBtn.hidden = true;
+    input.placeholder = 'APIキーを貼り付け';
+  }
+}
+
 async function exportJSON(){
-  const [stores, drinksArr, logs] = await Promise.all([
-    dbGetAll('stores'), dbGetAll('drinks'), dbGetAll('logs')
+  const [stores, drinksArr, logs, profileArr] = await Promise.all([
+    dbGetAll('stores'), dbGetAll('drinks'), dbGetAll('logs'), dbGetAll('profile')
   ]);
   // Blob（photo/thumb）は除いてメタデータだけ出す
   const drinks = drinksArr.map(({ photo, thumb, ...rest }) => rest);
-  return JSON.stringify({ stores, drinks, logs }, null, 2);
+  const profile = profileArr[0] || null;
+  return JSON.stringify({ stores, drinks, logs, profile }, null, 2);
 }
 window.sakelog = { exportJSON };
 
@@ -1294,6 +1899,7 @@ function init(){
   document.getElementById('btnDelete').addEventListener('click', handleDeleteClick);
 
   document.getElementById('btnSettings').addEventListener('click', () => {
+    renderGeminiKeyUI();
     document.getElementById('settingsOverlay').hidden = false;
   });
   document.getElementById('settingsOverlay').addEventListener('click', (e) => {
@@ -1309,6 +1915,25 @@ function init(){
     document.getElementById('settingsOverlay').hidden = true;
     openStoresEdit('home');
   });
+  document.getElementById('btnReadUnread').addEventListener('click', readUnreadLabelsBatch);
+  document.getElementById('btnSaveGeminiKey').addEventListener('click', () => {
+    const v = document.getElementById('geminiKeyInput').value.trim();
+    if (!v){
+      toast('キーを入れてな');
+      return;
+    }
+    setGeminiKey(v);
+    renderGeminiKeyUI();
+    toast('保存したよ');
+    renderHome();
+  });
+  document.getElementById('btnClearGeminiKey').addEventListener('click', () => {
+    setGeminiKey('');
+    renderGeminiKeyUI();
+    toast('消したよ');
+    renderHome();
+  });
+  document.getElementById('btnGenProfile').addEventListener('click', generateProfile);
 
   document.getElementById('newStoreOverlay').addEventListener('click', (e) => {
     if (e.target.id === 'newStoreOverlay'){
