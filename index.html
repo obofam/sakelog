@@ -468,6 +468,150 @@
     background:var(--danger);
     color:#fff;
   }
+
+  /* 棚を撮るボタン（小さめ） */
+  .btn-shelf{
+    width:100%;
+    min-height:52px;
+    font-size:16px;
+    font-weight:600;
+    border-radius:14px;
+    background:transparent;
+    color:var(--muted);
+    border:2px solid var(--surface);
+    margin-bottom:14px;
+  }
+
+  /* 取り込み中の進捗バー */
+  .progress-bar-track{
+    width:100%;
+    height:8px;
+    border-radius:100px;
+    background:var(--surface);
+    overflow:hidden;
+    margin-top:18px;
+  }
+  .progress-bar-fill{
+    height:100%;
+    background:var(--accent);
+    width:0%;
+    transition:width 0.2s;
+  }
+
+  /* 「仮」タグ（ホームの一覧） */
+  .tag-provisional{
+    color:var(--muted);
+    font-size:12px;
+    font-weight:600;
+    margin-left:4px;
+  }
+
+  /* 整理する（トリアージ）画面 */
+  .triage-row{
+    display:flex;
+    gap:12px;
+    background:var(--surface);
+    border-radius:14px;
+    padding:10px;
+    margin-bottom:10px;
+    align-items:flex-start;
+  }
+  .triage-thumb{
+    width:64px;height:64px;
+    border-radius:10px;
+    object-fit:cover;
+    flex-shrink:0;
+    background:#000;
+  }
+  .triage-body{flex:1;min-width:0;}
+  .triage-name{font-size:16px;font-weight:700;display:block;}
+  .triage-name.muted{color:var(--muted);font-weight:500;}
+  .triage-date{color:var(--muted);font-size:13px;margin:2px 0 8px;display:block;}
+  .triage-ratings{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
+  .triage-rating-btn{
+    min-width:44px;min-height:44px;
+    border-radius:12px;
+    background:var(--bg);
+    font-size:20px;
+    display:flex;align-items:center;justify-content:center;
+    border:2px solid transparent;
+    color:var(--text);
+  }
+  .triage-rating-btn.active{border-color:var(--accent);}
+  .triage-store-chip{
+    display:inline-flex;
+    align-items:center;
+    gap:4px;
+    padding:8px 12px;
+    min-height:44px;
+    border-radius:12px;
+    background:var(--bg);
+    color:var(--muted);
+    font-size:14px;
+  }
+  .triage-store-picker{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    margin-top:8px;
+  }
+  .triage-store-picker .chip{
+    flex:0 0 auto;
+    padding:8px 12px;
+    font-size:13px;
+  }
+
+  /* 棚モード画面 */
+  .shelf-loading{
+    text-align:center;
+    color:var(--muted);
+    font-size:17px;
+    margin-top:30px;
+    animation:shelfPulse 1.4s ease-in-out infinite;
+  }
+  @keyframes shelfPulse{
+    0%,100%{opacity:0.4;}
+    50%{opacity:1;}
+  }
+  .shelf-card{
+    background:var(--surface);
+    border-radius:16px;
+    padding:16px;
+    margin-bottom:12px;
+  }
+  .shelf-card.adventure{
+    background:transparent;
+    border:2px dashed var(--accent-deep);
+  }
+  .shelf-position{font-size:19px;font-weight:700;margin:0 0 6px;}
+  .shelf-card-name{font-size:16px;font-weight:600;margin:0 0 4px;}
+  .shelf-card-reason{font-size:14px;color:var(--muted);margin:0;line-height:1.6;}
+  .shelf-none{
+    font-size:20px;
+    font-weight:700;
+    text-align:center;
+    margin:30px 0 8px;
+  }
+  .shelf-none-reason{
+    color:var(--muted);
+    font-size:14px;
+    text-align:center;
+    margin:0 0 20px;
+  }
+  .shelf-bottles-toggle{
+    width:100%;
+    text-align:left;
+    background:transparent;
+    color:var(--muted);
+    font-size:15px;
+    padding:12px 4px;
+  }
+  .shelf-bottle-row{
+    font-size:14px;
+    color:var(--muted);
+    padding:8px 4px;
+    border-bottom:1px solid rgba(255,255,255,0.08);
+  }
 </style>
 </head>
 <body>
@@ -484,9 +628,13 @@
     </header>
 
     <button class="btn-primary" id="btnCamera">📷 撮る</button>
-    <button class="btn-secondary" id="btnPicker" style="margin-bottom:22px;">🖼 カメラロールから選ぶ</button>
+    <button class="btn-secondary" id="btnPicker" style="margin-bottom:14px;">🖼 カメラロールから選ぶ</button>
+    <button class="btn-shelf" id="btnShelf">🛒 棚を撮る（この中ならどれ？）</button>
     <input type="file" id="fileCamera" accept="image/*" capture="environment" hidden>
-    <input type="file" id="filePicker" accept="image/*" hidden>
+    <input type="file" id="filePicker" accept="image/*" multiple hidden>
+    <input type="file" id="shelfInput" accept="image/*" capture="environment" hidden>
+
+    <button class="btn-secondary" id="btnTriageBanner" hidden style="margin-bottom:14px;">📥 未整理が 0本 → 整理する</button>
 
     <p class="section-label" style="margin-top:0;">最近飲んだの</p>
     <ul class="log-list" id="logList"></ul>
@@ -521,6 +669,29 @@
     <h2>店の編集</h2>
     <ul class="log-list" id="storesEditList"></ul>
     <button class="btn-secondary" id="btnStoresNew" style="margin-top:12px;">➕ 新しい店</button>
+  </section>
+
+  <!-- ============ IMPORTING（一括取り込み中） ============ -->
+  <section id="importing" class="screen" hidden>
+    <h2>取り込み中</h2>
+    <p class="progress-line" id="importingText"></p>
+    <div class="progress-bar-track"><div class="progress-bar-fill" id="importingBarFill"></div></div>
+  </section>
+
+  <!-- ============ TRIAGE（未整理を整理する） ============ -->
+  <section id="triage" class="screen" hidden>
+    <button class="back-btn" id="btnTriageBack">← 戻る</button>
+    <h2 id="triageHeader">未整理 0本</h2>
+    <button class="btn-secondary" id="btnTriageAllGood" style="margin-bottom:14px;">全部うまいでOK</button>
+    <ul class="log-list" id="triageList"></ul>
+  </section>
+
+  <!-- ============ SHELF（棚モード） ============ -->
+  <section id="shelf" class="screen" hidden>
+    <button class="back-btn" id="btnShelfBack">← 戻る</button>
+    <img class="detail-photo" id="shelfPhoto" style="max-height:36vh;" alt="棚の写真">
+    <div id="shelfBody"></div>
+    <button class="btn-secondary" id="btnShelfAgain" style="margin-top:14px;">📷 もう一枚</button>
   </section>
 
   <!-- ============ DONE ============ -->
@@ -567,6 +738,7 @@
     <h3>設定</h3>
     <div class="sheet-list">
       <button class="link-btn" style="text-align:left;padding:16px 4px;" id="btnStoresEditFromSettings">店を編集</button>
+      <button class="link-btn" style="text-align:left;padding:16px 4px;" id="btnTriageFromSettings">整理する</button>
       <button class="link-btn" style="text-align:left;padding:16px 4px;" id="btnReadUnread">📖 未読のラベルをまとめて読み取る</button>
       <button class="link-btn" style="text-align:left;padding:16px 4px;" id="btnExportJson">JSONを書き出す</button>
     </div>
@@ -578,7 +750,7 @@
     </div>
     <p class="detail-meta" style="text-align:left;margin-bottom:4px;" id="geminiKeyStatus"></p>
     <p class="detail-meta" style="text-align:left;">キーはこの端末の中にだけ保存されるよ</p>
-    <p class="version-text">v0.3</p>
+    <p class="version-text">v0.4</p>
   </div>
 </div>
 
@@ -815,7 +987,7 @@ function geminiErrorMessage(errType){
 /* =========================================================
    画面切り替え
 ========================================================= */
-const screens = ['home', 'rate', 'store', 'done', 'detail', 'stores'];
+const screens = ['home', 'rate', 'store', 'done', 'detail', 'stores', 'importing', 'triage', 'shelf'];
 function showScreen(id){
   screens.forEach((s) => {
     document.getElementById(s).hidden = (s !== id);
@@ -880,8 +1052,8 @@ function canvasToBlob(canvas, quality){
   });
 }
 
-async function handleFileSelected(file){
-  if (!file) return;
+// 1枚分の写真処理（本体写真1280px + サムネ160px + 「飲んだ日時」判定）
+async function preparePhoto(file){
   const bitmap = await loadBitmap(file);
 
   const photoCanvas = drawToCanvas(bitmap, 1280);
@@ -900,10 +1072,15 @@ async function handleFileSelected(file){
     ? file.lastModified
     : now;
 
-  pending = { photo, thumb, drankAt };
+  return { photo, thumb, drankAt };
+}
+
+async function handleFileSelected(file){
+  if (!file) return;
+  pending = await preparePhoto(file);
   pendingRating = null;
 
-  const photoUrl = URL.createObjectURL(photo);
+  const photoUrl = URL.createObjectURL(pending.photo);
   const img = document.getElementById('ratePhoto');
   img.src = photoUrl;
 
@@ -1095,6 +1272,18 @@ async function rereadLabelFromDetail(){
   await renderDetail();
 }
 
+// 「未読（＝まだ名前が読めていない）」対象を判定する共通ロジック
+// （読み取り失敗から1日経ってないものは連投しない）
+function getUnreadLabelTargets(drinks){
+  const ONE_DAY = 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  return drinks.filter((d) => {
+    if (d.name != null) return false;
+    if (!d.readError) return true;
+    return !d.readAt || (now - d.readAt > ONE_DAY);
+  });
+}
+
 // 設定シートの「📖 未読のラベルをまとめて読み取る」
 async function readUnreadLabelsBatch(){
   if (!getGeminiKey()){
@@ -1102,14 +1291,8 @@ async function readUnreadLabelsBatch(){
     return;
   }
   const btn = document.getElementById('btnReadUnread');
-  const ONE_DAY = 24 * 60 * 60 * 1000;
-  const now = Date.now();
   const drinks = await dbGetAll('drinks');
-  const targets = drinks.filter((d) => {
-    if (d.name != null) return false;
-    if (!d.readError) return true;
-    return !d.readAt || (now - d.readAt > ONE_DAY);
-  });
+  const targets = getUnreadLabelTargets(drinks);
   if (targets.length === 0){
     toast('未読のラベルはないよ');
     return;
@@ -1131,6 +1314,255 @@ async function readUnreadLabelsBatch(){
   btn.textContent = '📖 未読のラベルをまとめて読み取る';
   toast(`${okCount}件読み取ったよ`);
   renderHome();
+}
+
+/* =========================================================
+   カメラロール一括取り込み
+========================================================= */
+function setImportingProgress(done, total, label){
+  document.getElementById('importingText').textContent = `${label} ${done}/${total}`;
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  document.getElementById('importingBarFill').style.width = pct + '%';
+}
+
+async function startBulkImport(files){
+  showScreen('importing');
+  const total = files.length;
+  setImportingProgress(0, total, '取り込み中');
+
+  const existingDrinks = await dbGetAll('drinks');
+  const existingKeys = new Set(existingDrinks.filter((d) => d.importKey).map((d) => d.importKey));
+
+  let imported = 0;
+  let skipped = 0;
+
+  for (let i = 0; i < files.length; i++){
+    const file = files[i];
+    setImportingProgress(i + 1, total, '取り込み中');
+    try {
+      const importKey = file.size + ':' + file.lastModified;
+      if (existingKeys.has(importKey)){
+        skipped++;
+        continue;
+      }
+      const { photo, thumb } = await preparePhoto(file);
+      const drinkId = uuid();
+      const drink = {
+        id: drinkId,
+        kind: 'wine',
+        name: null,
+        producer: null,
+        country: null,
+        region: null,
+        grape: null,
+        vintage: null,
+        color: null,
+        importer: null,
+        confirmed: false,
+        readAt: null,
+        readConfidence: null,
+        readNote: null,
+        readError: null,
+        importKey,
+        photo,
+        thumb,
+        createdAt: Date.now()
+      };
+      const log = {
+        id: uuid(),
+        drinkId,
+        drankAt: file.lastModified || Date.now(),
+        rating: 3, // 仮「うまい」
+        storeId: null,
+        price: null,
+        memo: null,
+        companions: null,
+        food: null,
+        provisional: true,
+        createdAt: Date.now()
+      };
+      await dbPut('drinks', drink);
+      await dbPut('logs', log);
+      existingKeys.add(importKey);
+      imported++;
+    } catch (e) {
+      // この1枚が失敗してもバッチ全体は止めない
+    }
+  }
+
+  toast(`${imported}本取り込んだよ（${skipped}本はもうあった）`);
+
+  if (getGeminiKey() && imported > 0){
+    await runLabelBatchDuringImport();
+  }
+
+  await openTriage();
+}
+
+// 取り込み直後、Geminiキーがあれば自動でラベルをまとめて読む（取り込み画面の進捗を流用）
+async function runLabelBatchDuringImport(){
+  const drinks = await dbGetAll('drinks');
+  const targets = getUnreadLabelTargets(drinks);
+  if (targets.length === 0) return;
+  for (let i = 0; i < targets.length; i++){
+    setImportingProgress(i + 1, targets.length, 'ラベル読み取り中');
+    const res = await fetchLabelForDrink(targets[i]);
+    if (!res.ok && res.errType === 'auth') break;
+    if (i < targets.length - 1) await sleep(400);
+  }
+}
+
+/* =========================================================
+   整理する（トリアージ）画面
+========================================================= */
+let triageObjectUrls = [];
+
+function revokeTriageUrls(){
+  triageObjectUrls.forEach((u) => URL.revokeObjectURL(u));
+  triageObjectUrls = [];
+}
+
+async function openTriage(){
+  await renderTriage();
+  showScreen('triage');
+}
+
+function closeTriage(){
+  revokeTriageUrls();
+  showScreen('home');
+  renderHome();
+}
+
+async function renderTriage(){
+  revokeTriageUrls();
+  const [logs, drinksArr, storesArr] = await Promise.all([
+    dbGetAll('logs'), dbGetAll('drinks'), dbGetAll('stores')
+  ]);
+  const drinkMap = new Map(drinksArr.map((d) => [d.id, d]));
+  const provisionalLogs = logs.filter((l) => l.provisional).sort((a, b) => (b.drankAt || 0) - (a.drankAt || 0));
+
+  document.getElementById('triageHeader').textContent = `未整理 ${provisionalLogs.length}本`;
+
+  const recentStores = storesArr.slice().sort((a, b) => (b.lastUsedAt || 0) - (a.lastUsedAt || 0)).slice(0, 6);
+
+  const list = document.getElementById('triageList');
+  list.innerHTML = '';
+
+  if (provisionalLogs.length === 0){
+    const li = document.createElement('li');
+    li.className = 'empty-state';
+    li.textContent = '未整理はないよ';
+    list.appendChild(li);
+    return;
+  }
+
+  provisionalLogs.forEach((log) => {
+    const drink = drinkMap.get(log.drinkId);
+    if (!drink) return;
+
+    const li = document.createElement('li');
+    li.className = 'triage-row';
+
+    const thumbUrl = URL.createObjectURL(drink.thumb);
+    triageObjectUrls.push(thumbUrl);
+
+    const nameLine = drink.name
+      ? `<span class="triage-name">${escapeHtml(drink.name)}</span>`
+      : `<span class="triage-name muted">名前 まだ</span>`;
+
+    const storeLabel = log.storeId
+      ? (() => { const s = storesArr.find((x) => x.id === log.storeId); return s ? `店：${s.name} ▾` : '店：あとで ▾'; })()
+      : '店：あとで ▾';
+
+    li.innerHTML = `
+      <img class="triage-thumb" src="${thumbUrl}" alt="">
+      <div class="triage-body">
+        ${nameLine}
+        <span class="triage-date">${fmtDate(log.drankAt)}</span>
+        <div class="triage-ratings"></div>
+        <button type="button" class="triage-store-chip">${storeLabel}</button>
+        <div class="triage-store-picker" hidden></div>
+      </div>
+    `;
+    list.appendChild(li);
+
+    const ratingsWrap = li.querySelector('.triage-ratings');
+    RATINGS.forEach((r) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'triage-rating-btn' + (log.rating === r.value ? ' active' : '');
+      btn.textContent = r.emoji;
+      btn.addEventListener('click', async () => {
+        log.rating = r.value;
+        log.provisional = false;
+        await dbPut('logs', log);
+        fadeOutTriageRow(li);
+      });
+      ratingsWrap.appendChild(btn);
+    });
+
+    const storeBtn = li.querySelector('.triage-store-chip');
+    const picker = li.querySelector('.triage-store-picker');
+    storeBtn.addEventListener('click', () => {
+      picker.hidden = !picker.hidden;
+    });
+
+    const laterOpt = document.createElement('button');
+    laterOpt.type = 'button';
+    laterOpt.className = 'chip';
+    laterOpt.textContent = 'あとで';
+    laterOpt.addEventListener('click', async () => {
+      log.storeId = null;
+      await dbPut('logs', log);
+      storeBtn.textContent = '店：あとで ▾';
+      picker.hidden = true;
+    });
+    picker.appendChild(laterOpt);
+
+    recentStores.forEach((s) => {
+      const opt = document.createElement('button');
+      opt.type = 'button';
+      opt.className = 'chip';
+      opt.textContent = s.name;
+      opt.addEventListener('click', async () => {
+        log.storeId = s.id;
+        s.lastUsedAt = Date.now();
+        await dbPut('stores', s);
+        await dbPut('logs', log);
+        storeBtn.textContent = `店：${s.name} ▾`;
+        picker.hidden = true;
+      });
+      picker.appendChild(opt);
+    });
+  });
+}
+
+function fadeOutTriageRow(li){
+  li.style.transition = 'opacity 0.25s';
+  li.style.opacity = '0';
+  setTimeout(() => {
+    li.remove();
+    const remaining = document.querySelectorAll('#triageList .triage-row').length;
+    document.getElementById('triageHeader').textContent = `未整理 ${remaining}本`;
+    if (remaining === 0){
+      const list = document.getElementById('triageList');
+      const empty = document.createElement('li');
+      empty.className = 'empty-state';
+      empty.textContent = '未整理はないよ';
+      list.appendChild(empty);
+    }
+  }, 250);
+}
+
+async function handleTriageAllGood(){
+  const logs = await dbGetAll('logs');
+  const provisionalLogs = logs.filter((l) => l.provisional);
+  for (const log of provisionalLogs){
+    log.provisional = false;
+    await dbPut('logs', log);
+  }
+  toast('整理したよ');
+  renderTriage();
 }
 
 /* =========================================================
@@ -1386,12 +1818,13 @@ async function renderHome(){
         ? `<span class="log-name">${escapeHtml(drink.name)}</span>`
         : `<span class="log-name muted">名前 まだ</span>`;
       const storeName = store ? escapeHtml(store.name) : '店：あとで';
+      const provisionalTag = log.provisional ? ' <span class="tag-provisional">仮</span>' : '';
 
       btn.innerHTML = `
         <img class="log-thumb" src="${thumbUrl}" alt="">
         <span class="log-info">
           ${nameLine}
-          <span class="log-sub">${info.emoji} ${info.label} · ${storeName} · ${fmtDate(log.drankAt)}</span>
+          <span class="log-sub">${info.emoji} ${info.label}${provisionalTag} · ${storeName} · ${fmtDate(log.drankAt)}</span>
         </span>
       `;
       btn.addEventListener('click', () => openDetail(log.id));
@@ -1401,6 +1834,15 @@ async function renderHome(){
   }
 
   document.getElementById('countFooter').textContent = `これまで ${logs.length} 本`;
+
+  const provisionalCount = logs.filter((l) => l.provisional).length;
+  const bannerBtn = document.getElementById('btnTriageBanner');
+  if (provisionalCount > 0){
+    bannerBtn.textContent = `📥 未整理が ${provisionalCount}本 → 整理する`;
+    bannerBtn.hidden = false;
+  } else {
+    bannerBtn.hidden = true;
+  }
 
   await updateHomeProgressAndProfile(logs, drinksArr);
 }
@@ -1801,6 +2243,164 @@ async function handleDeleteClick(){
 }
 
 /* =========================================================
+   棚モード（この中ならどれ？）
+========================================================= */
+let shelfPhotoUrl = null;
+
+// Gemini Vision呼び出し（好きなプロンプトを渡せる版。ラベル読み取り用のcallGeminiVisionとは別）
+async function callGeminiVisionWithPrompt(photoBlob, promptText){
+  const base64 = await blobToBase64(photoBlob);
+  return callGemini([
+    { inline_data: { mime_type: 'image/jpeg', data: base64 } },
+    { text: promptText }
+  ]);
+}
+
+// 好みプロフィール + 評価済み銘柄（最大40件、評価高い順）をテキスト化してコンテキストにする
+async function buildShelfContext(){
+  const [profile, drinksArr, logsArr] = await Promise.all([
+    dbGet('profile', 'me'), dbGetAll('drinks'), dbGetAll('logs')
+  ]);
+  const drinkMap = new Map(drinksArr.map((d) => [d.id, d]));
+  const rated = [];
+  logsArr.forEach((log) => {
+    const drink = drinkMap.get(log.drinkId);
+    if (!drink || drink.name == null) return;
+    rated.push({ drink, rating: log.rating });
+  });
+  rated.sort((a, b) => b.rating - a.rating);
+  const top = rated.slice(0, 40);
+  const lines = top.map(({ drink, rating }) => {
+    const countryRegion = [drink.country, drink.region].filter(Boolean).join('/') || '不明';
+    return [drink.name, countryRegion, drink.grape || '不明', drink.color || '-', drink.importer || '不明', rating].join(' | ');
+  });
+
+  let text = '';
+  if (profile){
+    text += `## 好みプロフィール\n`
+      + `概要: ${profile.summary || ''}\n`
+      + `ソムリエ的一言: ${profile.sommelier || ''}\n`
+      + `選択軸1: ${profile.axis1 || ''}\n`
+      + `選択軸2: ${profile.axis2 || ''}\n`
+      + `冒険の方向性: ${profile.adventure || ''}\n\n`;
+  }
+  text += `## 過去に評価した銘柄（name | country/region | grape | color | importer | rating(1-4)）\n`;
+  text += lines.length > 0 ? lines.join('\n') : '（まだ評価済みの銘柄が少ない）';
+  return text;
+}
+
+function buildShelfPrompt(context){
+  return `あなたはワイン棚の写真を見て、ユーザーの好みに合うボトルを探すアシスタントです。
+写っているボトルを読めるだけ読んでください。読めないものは無理に推測しないでください。
+ユーザーの好みに直球で合うものが棚になければ、picksは空にして正直に"none"と答えてください。嘘の銘柄をでっち上げないでください。
+positionは棚の写真の中で指させる言い方にしてください（例：「左から3本目・上段」）。
+
+${context}
+
+次のJSON形式だけで回答してください（説明文は不要）：
+{
+  "bottles": [ {"position":"...","name":"...","producer":"...","country":"...","grape":"...","color":"...","importer":"...","price":null} ],
+  "picks": [ {"position":"...","name":"...","reason":"..."} ],
+  "adventure": {"position":"...","name":"...","reason":"..."} または null,
+  "verdict": "hit" または "adventure_only" または "none",
+  "none_reason": "..." または null
+}`;
+}
+
+function renderShelfLoading(){
+  document.getElementById('shelfBody').innerHTML = '<p class="shelf-loading">棚を見てるよ…</p>';
+}
+
+function renderShelfError(msg){
+  document.getElementById('shelfBody').innerHTML = `<p class="shelf-none">${escapeHtml(msg)}</p>`;
+}
+
+function shelfCardHtml(item, adventure){
+  return `
+    <div class="shelf-card${adventure ? ' adventure' : ''}">
+      <p class="shelf-position">${escapeHtml(item.position || '')}</p>
+      <p class="shelf-card-name">${escapeHtml(item.name || '')}</p>
+      <p class="shelf-card-reason">${escapeHtml(item.reason || '')}</p>
+    </div>
+  `;
+}
+
+function renderShelfResult(result){
+  const body = document.getElementById('shelfBody');
+  let html = '';
+
+  if (result.verdict === 'hit'){
+    html += `<h2 style="text-align:left;margin:16px 0 10px;">この中ならこれ</h2>`;
+    (result.picks || []).forEach((p) => { html += shelfCardHtml(p, false); });
+    if (result.adventure){
+      html += `<p class="section-label">冒険するなら</p>`;
+      html += shelfCardHtml(result.adventure, true);
+    }
+  } else if (result.verdict === 'adventure_only'){
+    html += `<h2 style="text-align:left;margin:16px 0 10px;">直球はない。冒険するなら</h2>`;
+    if (result.adventure) html += shelfCardHtml(result.adventure, true);
+  } else {
+    html += `<p class="shelf-none">この中にはないよ。今日はビールにしておこう</p>`;
+    if (result.none_reason) html += `<p class="shelf-none-reason">${escapeHtml(result.none_reason)}</p>`;
+  }
+
+  const bottles = result.bottles || [];
+  html += `
+    <button type="button" class="shelf-bottles-toggle" id="btnShelfBottlesToggle">▸ 読めたボトル ${bottles.length}本</button>
+    <div id="shelfBottlesList" hidden></div>
+  `;
+  body.innerHTML = html;
+
+  const bottlesList = document.getElementById('shelfBottlesList');
+  bottlesList.innerHTML = bottles.map((b) => `
+    <div class="shelf-bottle-row">${escapeHtml(b.position || '')} ・ ${escapeHtml(b.name || '不明')} ・ ${escapeHtml(b.country || '')} ・ ${escapeHtml(b.importer || '')}</div>
+  `).join('');
+
+  document.getElementById('btnShelfBottlesToggle').addEventListener('click', () => {
+    const willOpen = bottlesList.hidden;
+    bottlesList.hidden = !willOpen;
+    document.getElementById('btnShelfBottlesToggle').textContent = `${willOpen ? '▾' : '▸'} 読めたボトル ${bottles.length}本`;
+  });
+
+  // TODO: 「探した」記録として scouts ストアに保存する機能は将来追加予定。今は何も保存しない。
+}
+
+async function handleShelfPhoto(file){
+  if (!file) return;
+  if (!getGeminiKey()){
+    toast('設定でGeminiキーを入れてね');
+    return;
+  }
+  showScreen('shelf');
+  renderShelfLoading();
+  try {
+    const bitmap = await loadBitmap(file);
+    const canvas = drawToCanvas(bitmap, 1800); // ラベルが読めるよう長辺1800pxまで
+    const blob = await canvasToBlob(canvas, 0.85);
+    if (bitmap.close) bitmap.close();
+
+    if (shelfPhotoUrl) URL.revokeObjectURL(shelfPhotoUrl);
+    shelfPhotoUrl = URL.createObjectURL(blob);
+    document.getElementById('shelfPhoto').src = shelfPhotoUrl;
+    // 棚の写真自体はIndexedDBには保存しない
+
+    const context = await buildShelfContext();
+    const prompt = buildShelfPrompt(context);
+    const result = await callGeminiVisionWithPrompt(blob, prompt);
+    renderShelfResult(result);
+  } catch (err) {
+    const errType = (err && err.type) || 'other';
+    renderShelfError(geminiErrorMessage(errType) || '読めなかった');
+  }
+}
+
+function leaveShelf(){
+  if (shelfPhotoUrl){ URL.revokeObjectURL(shelfPhotoUrl); shelfPhotoUrl = null; }
+  showScreen('home');
+  renderHome();
+}
+
+/* =========================================================
    設定シート / Gemini APIキー / JSON書き出し
 ========================================================= */
 function maskedKeyLabel(key){
@@ -1860,9 +2460,36 @@ function init(){
     if (file) handleFileSelected(file);
   });
   document.getElementById('filePicker').addEventListener('change', (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (files.length === 0) return;
+    if (files.length === 1) handleFileSelected(files[0]);
+    else startBulkImport(files);
+  });
+
+  document.getElementById('btnShelf').addEventListener('click', () => {
+    if (!getGeminiKey()){
+      toast('設定でGeminiキーを入れてね');
+      return;
+    }
+    document.getElementById('shelfInput').click();
+  });
+  document.getElementById('shelfInput').addEventListener('change', (e) => {
     const file = e.target.files[0];
     e.target.value = '';
-    if (file) handleFileSelected(file);
+    if (file) handleShelfPhoto(file);
+  });
+  document.getElementById('btnShelfBack').addEventListener('click', leaveShelf);
+  document.getElementById('btnShelfAgain').addEventListener('click', () => {
+    document.getElementById('shelfInput').click();
+  });
+
+  document.getElementById('btnTriageBack').addEventListener('click', closeTriage);
+  document.getElementById('btnTriageAllGood').addEventListener('click', handleTriageAllGood);
+  document.getElementById('btnTriageBanner').addEventListener('click', openTriage);
+  document.getElementById('btnTriageFromSettings').addEventListener('click', () => {
+    document.getElementById('settingsOverlay').hidden = true;
+    openTriage();
   });
 
   document.getElementById('btnRateCancel').addEventListener('click', () => {
