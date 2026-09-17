@@ -1057,7 +1057,7 @@ function updateDetailStamp(drink){
    通信先は generativelanguage.googleapis.com のみ。
 ========================================================= */
 const GEMINI_MODEL = 'gemini-3.6-flash'; // 動作確認済み（2026-09時点。gemini-2.5-flash/2.0-flashは廃止済みだった）
-const RELAY_URL = ''; // 空ならお試し中継は無効。relay/README.md の手順でデプロイしたらそのURLを入れる
+const RELAY_URL = 'https://sakelog-relay.mimiobo.workers.dev'; // 空ならお試し中継は無効。relay/README.md の手順でデプロイしたらそのURLを入れる
 
 function getGeminiKey(){
   try { return (localStorage.getItem('sakelog.geminiKey') || '').trim(); } catch (e) { return ''; }
