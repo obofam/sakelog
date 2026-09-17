@@ -1,5 +1,5 @@
 // 酒ログ Service Worker — シンプルな cache-first
-const CACHE_NAME = 'sakelog-v11';
+const CACHE_NAME = 'sakelog-v12';
 const STAMPS_CACHE = 'sakelog-stamps-v1'; // 肴スタンプ（APNG）専用。アプリのキャッシュ更新でも消さない
 const ASSETS = [
   './',
@@ -45,6 +45,21 @@ self.addEventListener('fetch', (event) => {
           }).catch(() => cached);
         })
       )
+    );
+    return;
+  }
+
+  // ページ本体（ナビゲーション / index.html）は network-first。オンラインなら常に最新版、オフラインならキャッシュ
+  const isPage = event.request.mode === 'navigate' || /\/(index\.html)?(\?.*)?$/.test(new URL(event.request.url).pathname + '');
+  if (isPage) {
+    event.respondWith(
+      fetch(event.request).then((res) => {
+        if (res && res.ok) {
+          const clone = res.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        }
+        return res;
+      }).catch(() => caches.match(event.request).then((c) => c || caches.match('./index.html')))
     );
     return;
   }

@@ -338,7 +338,8 @@
   .sheet h3{margin:0 0 16px;font-size:20px;}
   .sheet-head{position:sticky;top:-24px;margin:-24px -20px 16px;padding:16px 20px 12px;background:var(--surface);display:flex;align-items:center;justify-content:space-between;z-index:1;}
   .sheet-head h3{margin:0;}
-  body.sheet-open{overflow:hidden;}
+  body.sheet-open{position:fixed;left:0;right:0;width:100%;overflow:hidden;}
+  .sheet{touch-action:pan-y;}
   .sheet input[type=text], .sheet input[type=password]{
     width:100%;
     font-size:19px;
@@ -2895,11 +2896,23 @@ function openSettingsSheet(){
   const ov = document.getElementById('settingsOverlay');
   ov.hidden = false;
   ov.querySelector('.sheet').scrollTop = 0;
-  document.body.classList.add('sheet-open');
+  lockBodyScroll();
 }
 function closeSettingsSheet(){
   document.getElementById('settingsOverlay').hidden = true;
+  unlockBodyScroll();
+}
+// iOS Safari は body の overflow:hidden を無視するので position:fixed で止める
+let savedScrollY = 0;
+function lockBodyScroll(){
+  savedScrollY = window.scrollY || 0;
+  document.body.style.top = `-${savedScrollY}px`;
+  document.body.classList.add('sheet-open');
+}
+function unlockBodyScroll(){
   document.body.classList.remove('sheet-open');
+  document.body.style.top = '';
+  window.scrollTo(0, savedScrollY);
 }
 
 async function handleBackupExport(){
@@ -3151,7 +3164,14 @@ init();
 
 <!-- SW:START -->
 <script>
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(()=>{});
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(()=>{});
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloaded) return; reloaded = true;
+    if (navigator.serviceWorker.controller) location.reload();
+  });
+}
 </script>
 <!-- SW:END -->
 
