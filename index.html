@@ -622,7 +622,7 @@
     <header class="home-header">
       <div>
         <h1>酒ログ</h1>
-        <p class="subtitle">撮るだけでいい</p>
+        <p class="subtitle">あなたの好み、わかってますよ🍷</p>
       </div>
       <button class="settings-btn" id="btnSettings" aria-label="設定">⚙︎</button>
     </header>
@@ -640,6 +640,7 @@
     <p class="section-label" style="margin-top:0;">最近飲んだの</p>
     <ul class="log-list" id="logList"></ul>
     <p class="count-footer" id="countFooter"></p>
+    <button type="button" class="link-btn link-btn-sm" id="backupReminder" hidden>バックアップ、しばらくしてないよ → 設定から</button>
     <p class="progress-line" id="progressLine"></p>
     <button class="btn-primary" id="btnGenProfile" hidden style="margin-top:14px;">🍷 好みを言語化する</button>
     <div class="profile-card" id="profileCard" hidden></div>
@@ -755,6 +756,11 @@
 <div class="overlay" id="settingsOverlay" hidden>
   <div class="sheet">
     <h3>設定</h3>
+    <button class="btn-secondary" id="btnBackupExport" style="margin-bottom:6px;">💾 バックアップを書き出す</button>
+    <p class="detail-meta" style="text-align:left;margin:0 0 14px;" id="lastBackupLine"></p>
+    <p class="detail-meta" style="text-align:left;margin:0 0 8px;" id="backupRestoreNote" hidden>今あるデータは消えないよ。同じものは重複しないで足すだけ</p>
+    <button class="btn-secondary" id="btnBackupRestore" style="margin-bottom:20px;">📂 バックアップから復元</button>
+    <input type="file" id="backupRestoreInput" accept="application/json,.json" hidden>
     <div class="sheet-list">
       <button class="link-btn" style="text-align:left;padding:16px 4px;" id="btnStoresEditFromSettings">店を編集</button>
       <button class="link-btn" style="text-align:left;padding:16px 4px;" id="btnTriageFromSettings">整理する</button>
@@ -769,7 +775,7 @@
     </div>
     <p class="detail-meta" style="text-align:left;margin-bottom:4px;" id="geminiKeyStatus"></p>
     <p class="detail-meta" style="text-align:left;">キーはこの端末の中にだけ保存されるよ</p>
-    <p class="version-text">v0.4</p>
+    <p class="version-text">v0.5</p>
   </div>
 </div>
 
@@ -1350,7 +1356,7 @@ function setImportingProgress(done, total, label){
   document.getElementById('importingBarFill').style.width = pct + '%';
 }
 
-async function startBulkImport(files){
+async function startBulkImport(files, onboarding){
   showScreen('importing');
   const total = files.length;
   setImportingProgress(0, total, '取り込み中');
@@ -1403,7 +1409,7 @@ async function startBulkImport(files){
         memo: null,
         companions: null,
         food: null,
-        provisional: true,
+        provisional: !onboarding,
         createdAt: Date.now()
       };
       await dbPut('drinks', drink);
@@ -1415,13 +1421,27 @@ async function startBulkImport(files){
     }
   }
 
-  toast(`${imported}本取り込んだよ（${skipped}本はもうあった）`);
+  if (!onboarding){
+    toast(`${imported}本取り込んだよ（${skipped}本はもうあった）`);
+  }
 
   if (getGeminiKey() && imported > 0){
     await runLabelBatchDuringImport();
   }
 
-  await openTriage();
+  if (onboarding){
+    showScreen('home');
+    await renderHome();
+    toast(`${imported}本を「うまい」で入れたよ。詳細から直せる`);
+    if (!getGeminiKey()){
+      setTimeout(() => {
+        toast('Geminiキーを入れると、ラベルを読んで好みがわかるよ');
+        openSettingsSheet();
+      }, 1400);
+    }
+  } else {
+    await openTriage();
+  }
 }
 
 // 取り込み直後、Geminiキーがあれば自動でラベルをまとめて読む（取り込み画面の進捗を流用）
@@ -1823,8 +1843,16 @@ async function renderHome(){
   if (logs.length === 0){
     const li = document.createElement('li');
     li.className = 'empty-state';
-    li.textContent = 'まだ何もないよ。撮ったら始まる';
+    li.innerHTML = `
+      <p style="font-size:19px;font-weight:700;color:var(--text);line-height:1.6;margin:0 0 10px;">まずは、うまいと思ったワインのラベルを5枚以上選んで</p>
+      <p style="color:var(--muted);font-size:14px;margin:0 0 22px;">選んだ写真は全部「うまい」で入れるよ。あとから直せる</p>
+      <button type="button" class="btn-primary" id="btnOnboardingPicker" style="max-width:320px;margin:0 auto;">🖼 カメラロールから選ぶ</button>
+    `;
     list.appendChild(li);
+    const obBtn = document.getElementById('btnOnboardingPicker');
+    if (obBtn){
+      obBtn.addEventListener('click', () => document.getElementById('filePicker').click());
+    }
   } else {
     logs.forEach((log) => {
       const drink = drinkMap.get(log.drinkId);
@@ -1859,6 +1887,7 @@ async function renderHome(){
   }
 
   document.getElementById('countFooter').textContent = `これまで ${logs.length} 本`;
+  updateBackupReminder(logs.length);
 
   const provisionalCount = logs.filter((l) => l.provisional).length;
   const bannerBtn = document.getElementById('btnTriageBanner');
@@ -1875,6 +1904,8 @@ async function renderHome(){
 /* =========================================================
    好みの言語化（プロフィール）
 ========================================================= */
+const PROFILE_MIN = 5; // これ以上ラベルが読めたら「好みを言語化する」を出す
+
 async function updateHomeProgressAndProfile(logs, drinksArr){
   const drinkIdsWithLog = new Set(logs.map((l) => l.drinkId));
   const readCount = drinksArr.filter((d) => d.name != null && drinkIdsWithLog.has(d.id)).length;
@@ -1883,8 +1914,8 @@ async function updateHomeProgressAndProfile(logs, drinksArr){
   const genBtn = document.getElementById('btnGenProfile');
   const cardWrap = document.getElementById('profileCard');
 
-  if (readCount < 10){
-    let msg = `言語化まで ラベル読み取り済み ${readCount}/10 本`;
+  if (readCount < PROFILE_MIN){
+    let msg = `言語化まで ラベル読み取り済み ${readCount}/${PROFILE_MIN} 本`;
     if (!getGeminiKey()) msg += '（設定でGeminiキーを入れてね）';
     progressEl.textContent = msg;
     progressEl.hidden = false;
@@ -2005,12 +2036,16 @@ function buildStatsText(stats){
   return stats.map((s) => `${s.attrLabel}=${s.value}：${s.count}回登場、うまい以上率${Math.round(s.hitRate3 * 100)}%、超好き率${Math.round(s.hitRate4 * 100)}%`).join('\n');
 }
 
-const PROFILE_PROMPT_HEADER = `以下はあるユーザーのお酒の試飲記録です。データをもとに、その人の好みを言語化してください。
+function buildProfilePromptHeader(sampleSize){
+  const tentativeLine = sampleSize < 10
+    ? `- 本数がまだ10本に届いていない（今回は${sampleSize}本）ので、言い切らず「今のところ」「〜っぽい」など留保した言い方にすること。summaryの中にもその留保を一言入れること\n`
+    : '';
+  return `以下はあるユーザーのお酒の試飲記録です。データをもとに、その人の好みを言語化してください。
 条件:
 - データが少ない属性は断定しないこと
 - 店の名前は実データにあるものだけを使うこと。存在しない銘柄や店をでっち上げないこと
 - 標準語のくだけた口調（「〜だよ」「〜だね」。関西弁は使わない）
-- summary: 好みの言語化。2〜3文。点数の話ではなく「あなたはこういう人」という言い方
+${tentativeLine}- summary: 好みの言語化。2〜3文。点数の話ではなく「あなたはこういう人」という言い方
 - sommelier: 店やワインショップでそのまま言える一言（例「果実味あって渋み控えめの、ローヌ系シラーみたいなやつ」）
 - axis1, axis2: 「棚で何を見れば外れないか」を、実際のヒット率の数字を根拠にして1行ずつ（例「品種より輸入元。エノテカ扱いなら8割当たってる」）
 - adventure: まだ飲んでいないが好みの延長線上にある方向性を1つ。買える店の種類も添える
@@ -2019,6 +2054,7 @@ const PROFILE_PROMPT_HEADER = `以下はあるユーザーのお酒の試飲記�
 
 ## 試飲記録
 `;
+}
 
 async function generateProfile(){
   if (!getGeminiKey()){
@@ -2032,12 +2068,12 @@ async function generateProfile(){
 
   try {
     const rows = await buildProfileDataset();
-    if (rows.length < 10){
+    if (rows.length < PROFILE_MIN){
       toast('まだデータが足りないよ');
       return;
     }
     const stats = computeAttributeStats(rows);
-    const prompt = PROFILE_PROMPT_HEADER + buildDrinkTableText(rows)
+    const prompt = buildProfilePromptHeader(rows.length) + buildDrinkTableText(rows)
       + '\n\n## 計算済みの統計（属性ごとの登場回数とヒット率）\n' + buildStatsText(stats);
     const result = await callGeminiText(prompt);
     const profile = {
@@ -2593,7 +2629,6 @@ async function exportJSON(){
   const shelves = shelvesArr.map(({ photo, ...rest }) => rest);
   return JSON.stringify({ stores, drinks, logs, profile, shelves }, null, 2);
 }
-window.sakelog = { exportJSON };
 
 function downloadJSON(json){
   const a = document.createElement('a');
@@ -2603,6 +2638,242 @@ function downloadJSON(json){
   a.click();
   a.remove();
 }
+
+/* =========================================================
+   バックアップ書き出し／復元
+   写真などのBlobは { <field>B64, <field>Type } に変換して1つのJSONにする。
+   復元はidが無いものだけ足す（既存があればスキップ・削除はしない）。
+========================================================= */
+async function encodeBlobFields(record){
+  const out = { ...record };
+  for (const key of Object.keys(record)){
+    const val = record[key];
+    if (val instanceof Blob){
+      out[`${key}B64`] = await blobToBase64(val);
+      out[`${key}Type`] = val.type || 'application/octet-stream';
+      delete out[key];
+    }
+  }
+  return out;
+}
+function decodeBlobFields(record){
+  const out = { ...record };
+  Object.keys(record).forEach((key) => {
+    if (!key.endsWith('B64')) return;
+    const base = key.slice(0, -3);
+    const typeKey = `${base}Type`;
+    try {
+      const binStr = atob(record[key]);
+      const bytes = new Uint8Array(binStr.length);
+      for (let i = 0; i < binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
+      out[base] = new Blob([bytes], { type: record[typeKey] || 'application/octet-stream' });
+    } catch (e) {
+      // 壊れたbase64はそのフィールドだけ諦める（呼び出し側のtry/catchでエラーカウント）
+      throw e;
+    }
+    delete out[key];
+    delete out[typeKey];
+  });
+  return out;
+}
+
+async function buildBackup(onProgress){
+  const [stores, drinksArr, logs, profileArr, shelvesArr] = await Promise.all([
+    dbGetAll('stores'), dbGetAll('drinks'), dbGetAll('logs'), dbGetAll('profile'), dbGetAll('shelves')
+  ]);
+  const total = drinksArr.length + shelvesArr.length;
+  let done = 0;
+  const drinks = [];
+  for (const d of drinksArr){
+    drinks.push(await encodeBlobFields(d));
+    done++;
+    if (onProgress) onProgress(done, total);
+  }
+  const shelves = [];
+  for (const s of shelvesArr){
+    shelves.push(await encodeBlobFields(s));
+    done++;
+    if (onProgress) onProgress(done, total);
+  }
+  return {
+    app: 'sakelog',
+    schema: DB_VERSION,
+    exportedAt: new Date().toISOString(),
+    counts: {
+      drinks: drinks.length,
+      logs: logs.length,
+      stores: stores.length,
+      profile: profileArr.length,
+      shelves: shelves.length
+    },
+    drinks, logs, stores, profile: profileArr, shelves
+  };
+}
+
+async function restoreBackup(obj, onProgress){
+  const storeNames = ['stores', 'drinks', 'logs', 'profile', 'shelves'];
+  const total = storeNames.reduce((sum, name) => sum + (Array.isArray(obj && obj[name]) ? obj[name].length : 0), 0);
+  let done = 0;
+  let added = 0, skipped = 0, errors = 0;
+  for (const name of storeNames){
+    const records = Array.isArray(obj && obj[name]) ? obj[name] : [];
+    for (const rec of records){
+      done++;
+      if (onProgress) onProgress(done, total);
+      try {
+        if (!rec || rec.id == null) { errors++; continue; }
+        const existing = await dbGet(name, rec.id);
+        if (existing){ skipped++; continue; }
+        await dbPut(name, decodeBlobFields(rec));
+        added++;
+      } catch (e) {
+        errors++;
+      }
+    }
+  }
+  return { added, skipped, errors };
+}
+
+function fmtBackupDateTime(ms){
+  const d = new Date(ms);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function getLastBackupAt(){
+  try { return Number(localStorage.getItem('sakelog.lastBackupAt') || 0); } catch (e) { return 0; }
+}
+function setLastBackupAt(ms){
+  try { localStorage.setItem('sakelog.lastBackupAt', String(ms)); } catch (e) { /* 無視 */ }
+}
+function renderLastBackupLine(){
+  const el = document.getElementById('lastBackupLine');
+  const ms = getLastBackupAt();
+  el.textContent = ms ? `最後のバックアップ: ${fmtBackupDateTime(ms)}` : 'まだ一度もしてないよ';
+}
+
+// 設定シートを開くたびに呼ぶ。復元の注意書きは「今あるデータが1件以上ある最初の1回」だけ出す
+async function renderBackupUI(){
+  renderLastBackupLine();
+  const noteEl = document.getElementById('backupRestoreNote');
+  let seen = false;
+  try { seen = localStorage.getItem('sakelog.restoreNoteSeen') === '1'; } catch (e) { /* 無視 */ }
+  if (seen){
+    noteEl.hidden = true;
+    return;
+  }
+  const logs = await dbGetAll('logs');
+  if (logs.length > 0){
+    noteEl.hidden = false;
+    try { localStorage.setItem('sakelog.restoreNoteSeen', '1'); } catch (e) { /* 無視 */ }
+  } else {
+    noteEl.hidden = true;
+  }
+}
+
+// ホーム下部の「そろそろバックアップしたら」リマインダー
+function updateBackupReminder(logsCount){
+  const el = document.getElementById('backupReminder');
+  if (!el) return;
+  const FOURTEEN_DAYS = 14 * 24 * 60 * 60 * 1000;
+  const lastAt = getLastBackupAt();
+  const stale = !lastAt || (Date.now() - lastAt > FOURTEEN_DAYS);
+  el.hidden = !(logsCount >= 5 && stale);
+}
+
+function openSettingsSheet(){
+  renderGeminiKeyUI();
+  renderBackupUI();
+  document.getElementById('settingsOverlay').hidden = false;
+}
+
+async function handleBackupExport(){
+  const btn = document.getElementById('btnBackupExport');
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  try {
+    const backup = await buildBackup((done, total) => {
+      btn.textContent = `まとめ中… ${done}/${total}`;
+    });
+    const json = JSON.stringify(backup);
+    const blob = new Blob([json], { type: 'application/json' });
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const filename = `sakelog-backup-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}.json`;
+
+    let shared = false;
+    if (navigator.canShare){
+      const file = new File([blob], filename, { type: 'application/json' });
+      if (navigator.canShare({ files: [file] })){
+        try {
+          await navigator.share({ files: [file], title: '酒ログ バックアップ' });
+          shared = true;
+        } catch (err) {
+          if (err && err.name === 'AbortError'){
+            toast('やめたよ');
+            return;
+          }
+          // 共有以外の失敗はダウンロードにフォールバック
+        }
+      }
+    }
+    if (!shared){
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    }
+
+    setLastBackupAt(Date.now());
+    const mb = (blob.size / (1024 * 1024)).toFixed(1);
+    toast(`書き出したよ（${backup.counts.drinks}本・${mb}MB）`);
+    renderLastBackupLine();
+    updateBackupReminder((await dbGetAll('logs')).length);
+  } catch (err) {
+    toast('書き出せなかった');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
+  }
+}
+
+async function handleBackupRestoreFile(file){
+  const btn = document.getElementById('btnBackupRestore');
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  try {
+    let obj;
+    try {
+      obj = JSON.parse(await file.text());
+    } catch (e) {
+      toast('酒ログのバックアップじゃないみたい');
+      return;
+    }
+    if (!obj || obj.app !== 'sakelog'){
+      toast('酒ログのバックアップじゃないみたい');
+      return;
+    }
+    const result = await restoreBackup(obj, (done, total) => {
+      btn.textContent = `復元中… ${done}/${total}`;
+    });
+    toast(`復元したよ：新しく ${result.added}本、もうあった ${result.skipped}本`);
+    await renderHome();
+  } catch (err) {
+    toast('復元できなかった');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
+  }
+}
+
+window.sakelog = {
+  exportJSON,
+  buildBackup: () => buildBackup(),
+  restoreBackup: (obj) => restoreBackup(obj)
+};
 
 /* =========================================================
    イベント登録
@@ -2619,12 +2890,16 @@ function init(){
     e.target.value = '';
     if (file) handleFileSelected(file);
   });
-  document.getElementById('filePicker').addEventListener('change', (e) => {
+  document.getElementById('filePicker').addEventListener('change', async (e) => {
     const files = Array.from(e.target.files || []);
     e.target.value = '';
     if (files.length === 0) return;
-    if (files.length === 1) handleFileSelected(files[0]);
-    else startBulkImport(files);
+    if (files.length === 1){
+      handleFileSelected(files[0]);
+      return;
+    }
+    const existingLogs = await dbGetAll('logs');
+    startBulkImport(files, existingLogs.length === 0);
   });
 
   document.getElementById('btnShelf').addEventListener('click', () => {
@@ -2703,9 +2978,16 @@ function init(){
   });
   document.getElementById('btnDelete').addEventListener('click', handleDeleteClick);
 
-  document.getElementById('btnSettings').addEventListener('click', () => {
-    renderGeminiKeyUI();
-    document.getElementById('settingsOverlay').hidden = false;
+  document.getElementById('btnSettings').addEventListener('click', openSettingsSheet);
+  document.getElementById('backupReminder').addEventListener('click', openSettingsSheet);
+  document.getElementById('btnBackupExport').addEventListener('click', handleBackupExport);
+  document.getElementById('btnBackupRestore').addEventListener('click', () => {
+    document.getElementById('backupRestoreInput').click();
+  });
+  document.getElementById('backupRestoreInput').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (file) handleBackupRestoreFile(file);
   });
   document.getElementById('settingsOverlay').addEventListener('click', (e) => {
     if (e.target.id === 'settingsOverlay'){
