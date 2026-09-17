@@ -378,6 +378,40 @@
   .version-text{color:var(--muted);font-size:13px;text-align:center;margin:0;}
   .settings-stamp-links a{color:var(--accent);text-decoration:none;}
 
+  /* Geminiキーの取り方ガイド */
+  #keyGuide h2{text-wrap:balance;}
+  .key-guide-steps{
+    margin:0;
+    padding-left:24px;
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+  }
+  .key-guide-steps li{
+    font-size:16px;
+    line-height:1.7;
+  }
+  .key-guide-steps li p{margin:0 0 10px;}
+  .key-guide-steps li .btn-secondary,
+  .key-guide-steps li #btnKeyGuideToSettings{
+    width:auto;
+    display:inline-flex;
+    min-height:52px;
+    padding:8px 18px;
+  }
+  .key-guide-steps code{
+    background:var(--bg);
+    padding:2px 6px;
+    border-radius:6px;
+    font-size:15px;
+  }
+  .key-guide-faq p{
+    font-size:16px;
+    line-height:1.7;
+    margin:0 0 16px;
+  }
+  .key-guide-faq strong{color:var(--text);}
+
   .toast{
     position:fixed;
     bottom:calc(env(safe-area-inset-bottom) + 26px);
@@ -758,6 +792,7 @@
         <button class="btn-secondary" id="btnClearGeminiKey" hidden>消す</button>
       </div>
       <p class="detail-meta" style="text-align:left;margin:0;" id="geminiKeyStatus"></p>
+      <button type="button" class="btn-text" id="btnKeyGuide">🔑 キーの取り方を読む</button>
       <p class="detail-meta" style="text-align:left;margin:0;">キーはこの端末の中にだけ保存されるよ</p>
       <button class="btn-secondary" id="btnReadUnread">📖 未読のラベルをまとめて読み取る</button>
     </div>
@@ -774,7 +809,52 @@
         <a href="https://line.me/S/sticker/36507457" target="_blank" rel="noopener">白ワイン編</a> ・
         <a href="https://line.me/S/sticker/36509466" target="_blank" rel="noopener">赤ワイン編</a>
       </p>
-      <p class="version-text">v0.9</p>
+      <p class="version-text">v0.10</p>
+    </div>
+  </section>
+
+  <!-- ============ KEY GUIDE（Geminiキーの取り方） ============ -->
+  <section id="keyGuide" class="screen" hidden>
+    <button type="button" class="btn-text" id="btnKeyGuideBack">← 戻る</button>
+    <h2>Geminiキーの取り方</h2>
+    <p class="subtitle" style="margin:-8px 0 4px;">酔ってないときに読んでね。5分で終わるよ。カードの登録はいらない</p>
+
+    <p class="section-label" style="margin:8px 0 0;">準備するもの</p>
+    <div class="key-guide-faq">
+      <p>Googleアカウント（Gmailを使ってるなら、それがGoogleアカウント）</p>
+      <p>それだけ。クレジットカードは要らない</p>
+    </div>
+
+    <p class="section-label" style="margin:8px 0 0;">手順</p>
+    <ol class="key-guide-steps">
+      <li>
+        <p>下のボタンを押す。Googleのログイン画面が出たら、Gmailのアドレスとパスワードで入る。</p>
+        <a class="btn-secondary" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">AI Studio を開く</a>
+      </li>
+      <li><p>初めてだと利用規約の画面が出る。チェックを入れて「続行」（Continue）。</p></li>
+      <li><p>「APIキーを作成」（Create API key）という青いボタンを押す。</p></li>
+      <li><p>「プロジェクト」を聞かれたら「新しいプロジェクトで作成」（Create API key in new project）。名前を聞かれたら何でもいい（例：sakelog）。</p></li>
+      <li><p>「AIza」で始まる長い文字が出る。横の「コピー」（四角が2つ重なったマーク）を押す。これがキー。</p></li>
+      <li>
+        <p>酒ログに戻って ⚙︎ →「ラベル読み取り」の枠を長押し →「ペースト」→「保存」。「設定済み（••••1234）」と出たら完了。</p>
+        <button type="button" class="btn-secondary" id="btnKeyGuideToSettings">設定に戻って貼る</button>
+      </li>
+    </ol>
+
+    <p class="section-label" style="margin:20px 0 0;">うまくいかないとき</p>
+    <div class="key-guide-faq">
+      <p><strong>英語の画面で戸惑う</strong><br>Create API key＝APIキーを作成、Copy＝コピー。それだけ覚えれば足りる。</p>
+      <p><strong>「請求」「Billing」「お支払い」と出た</strong><br>無視してOK。カード登録はしなくていい。</p>
+      <p><strong>貼ったのに「キーが違うみたい」と出る</strong><br>前後に空白が入ってることが多い。もう一度コピーし直して貼る。</p>
+      <p><strong>「読めなかった」が続く</strong><br>その日の無料枠を使い切っただけ。翌日また使える。</p>
+    </div>
+
+    <p class="section-label" style="margin:20px 0 0;">よくある心配</p>
+    <div class="key-guide-faq">
+      <p><strong>お金かかる？</strong><br>無料枠がある。ラベル1枚の読み取りは0.1円くらいの計算で、無料枠の中ならゼロ。課金は自分でONにしない限り始まらない。</p>
+      <p><strong>キーはどこに保存される？</strong><br>この端末の中だけ。アプリの作者にも見えない。バックアップにも入らない。</p>
+      <p><strong>写真はどこに行く？</strong><br>読み取りのときだけGoogleに送られる。無料枠では、送った内容がGoogleのサービス改善に使われることがある。ラベルの写真なら気にしなくていいけど、人が写った写真は送らないほうがいい。</p>
+      <p><strong>漏れたら？</strong><br>AI Studio のページでそのキーを削除して、作り直せばいい。</p>
     </div>
   </section>
 
@@ -1081,7 +1161,7 @@ function tsukkomiForSubject(subject){
 /* =========================================================
    画面切り替え
 ========================================================= */
-const screens = ['home', 'rate', 'store', 'done', 'detail', 'stores', 'importing', 'triage', 'shelf', 'shelfHistory', 'settings'];
+const screens = ['home', 'rate', 'store', 'done', 'detail', 'stores', 'importing', 'triage', 'shelf', 'shelfHistory', 'settings', 'keyGuide'];
 function showScreen(id){
   screens.forEach((s) => {
     document.getElementById(s).hidden = (s !== id);
@@ -2804,7 +2884,7 @@ function renderGeminiKeyUI(){
     clearBtn.hidden = false;
     input.placeholder = 'キーを変える場合はここに入力';
   } else {
-    statusEl.textContent = '未設定だよ';
+    statusEl.textContent = '未設定だよ（取り方は下のリンク）';
     clearBtn.hidden = true;
     input.placeholder = 'APIキーを貼り付け';
   }
@@ -3190,6 +3270,17 @@ function init(){
     openStoresEdit('home');
   });
   document.getElementById('btnReadUnread').addEventListener('click', readUnreadLabelsBatch);
+  document.getElementById('btnKeyGuide').addEventListener('click', () => {
+    showScreen('keyGuide');
+    window.scrollTo(0, 0);
+  });
+  document.getElementById('btnKeyGuideBack').addEventListener('click', () => {
+    openSettingsSheet();
+  });
+  document.getElementById('btnKeyGuideToSettings').addEventListener('click', () => {
+    openSettingsSheet();
+    document.getElementById('geminiKeyInput').focus();
+  });
   document.getElementById('btnSaveGeminiKey').addEventListener('click', () => {
     const v = document.getElementById('geminiKeyInput').value.trim();
     if (!v){
