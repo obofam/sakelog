@@ -1991,9 +1991,10 @@ async function renderHome(){
 
     let nameLine;
     if (drink.excluded){
-      const subjLabel = drink.subject === 'food' ? '🍽 肴？'
-        : drink.subject === 'person' ? '🙋 人'
-        : '📷 酒じゃない写真';
+      const subjLabel = drink.subject === 'food' ? '🍽 うまそうな肴。好みには入れてないよ'
+        : drink.subject === 'person' ? '🙋 楽しそうな人。酒じゃないから外してるよ'
+        : drink.subject === 'scenery' ? '🌅 いい景色。酒じゃないから外してるよ'
+        : '📷 酒じゃない写真。外してるけど残しておくね';
       nameLine = `<span class="log-name muted">${subjLabel}</span>`;
     } else {
       nameLine = drink.name
@@ -2279,7 +2280,7 @@ function renderDrinkInfo(drink){
 
   if (drink.excluded){
     wrap.innerHTML = `
-      <p class="drink-info-sub">好みの計算には入れてないよ</p>
+      <p class="drink-info-sub">この写真は酒じゃないので、好みの計算には入れてないよ。思い出としてはここに残しておくね</p>
       <div class="drink-info-actions">
         <button type="button" class="btn-secondary" id="btnUnexclude">🍷 これは酒だよ（読み直す）</button>
       </div>
