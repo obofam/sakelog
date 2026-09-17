@@ -236,6 +236,11 @@
   .done-check{font-size:34px;font-weight:800;margin-bottom:18px;}
   .done-sub{color:var(--muted);font-size:16px;margin-top:6px;}
 
+  /* 肴スタンプ（完了画面・詳細画面） */
+  .stamp{image-rendering:auto;border-radius:12px;display:block;margin:0 auto;}
+  .stamp-cap{color:var(--muted);font-size:13px;text-align:center;margin:6px 0 0;}
+  .stamp-wrap{margin-top:14px;text-align:center;}
+
   .detail-photo{
     width:100%;
     max-height:45vh;
@@ -349,6 +354,7 @@
     border-bottom:1px solid rgba(255,255,255,0.08);
   }
   .version-text{color:var(--muted);font-size:13px;text-align:center;margin-top:14px;}
+  .settings-stamp-links a{color:var(--accent);text-decoration:none;}
 
   .toast{
     position:fixed;
@@ -721,6 +727,10 @@
       <img class="photo-preview-small" id="donePhoto" alt="">
       <p class="log-rating" id="doneRating"></p>
       <p class="done-sub" id="doneStore"></p>
+      <div class="stamp-wrap" id="doneStampWrap" hidden>
+        <img class="stamp" id="doneStampImg" width="160" height="135" loading="lazy" decoding="async" alt="">
+        <p class="stamp-cap">今夜の肴はこれかな</p>
+      </div>
     </div>
   </section>
 
@@ -730,6 +740,10 @@
     <img class="detail-photo" id="detailPhoto" alt="">
     <p class="detail-meta" id="detailMeta"></p>
     <div class="drink-info" id="drinkInfo"></div>
+    <div class="stamp-wrap" id="detailStampWrap" hidden>
+      <img class="stamp" id="detailStampImg" width="120" height="101" loading="lazy" decoding="async" alt="">
+      <p class="stamp-cap">肴なら</p>
+    </div>
     <p class="section-label" style="margin-top:0;">評価</p>
     <div id="detailRatingButtons"></div>
     <p class="section-label">お店</p>
@@ -775,7 +789,11 @@
     </div>
     <p class="detail-meta" style="text-align:left;margin-bottom:4px;" id="geminiKeyStatus"></p>
     <p class="detail-meta" style="text-align:left;">キーはこの端末の中にだけ保存されるよ</p>
-    <p class="version-text">v0.5</p>
+    <p class="detail-meta settings-stamp-links" style="text-align:left;margin-top:16px;">肴のスタンプは Kei の LINEスタンプ「酒と肴」<br>
+      <a href="https://line.me/S/sticker/36507457" target="_blank" rel="noopener">白ワイン編</a> ・
+      <a href="https://line.me/S/sticker/36509466" target="_blank" rel="noopener">赤ワイン編</a>
+    </p>
+    <p class="version-text">v0.6</p>
   </div>
 </div>
 
@@ -915,6 +933,45 @@ function sleep(ms){
 }
 function colorLabel(c){
   return { red:'赤', white:'白', rose:'ロゼ', sparkling:'スパークリング', orange:'オレンジ' }[c] || null;
+}
+
+/* =========================================================
+   肴スタンプ（LINEスタンプ「酒と肴」白ワイン編/赤ワイン編）
+========================================================= */
+// 完了画面用：白/赤をランダムで選び、グラスだけの1枚目・3枚目は避ける（肴の写真だけにする）
+function randomStampPath(){
+  const set = Math.random() < 0.5 ? 'white' : 'red';
+  const foodIdx = [2, 4, 5, 6, 7, 8];
+  const idx = foodIdx[Math.floor(Math.random() * foodIdx.length)];
+  return `stamps/${set}/${String(idx).padStart(2, '0')}.png`;
+}
+// 詳細画面用：drinkのidから決定的に選ぶ（肴の写真だけ）
+function hashStampIndex(id){
+  let h = 0;
+  const s = String(id || '');
+  for (let i = 0; i < s.length; i++){
+    h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  }
+  const foodIdx = [2, 4, 5, 6, 7, 8];
+  return foodIdx[h % foodIdx.length];
+}
+function stampSetForColor(color){
+  if (color === 'white' || color === 'sparkling' || color === 'orange') return 'white';
+  if (color === 'red' || color === 'rose') return 'red';
+  return null;
+}
+function updateDetailStamp(drink){
+  const wrap = document.getElementById('detailStampWrap');
+  const img = document.getElementById('detailStampImg');
+  const set = drink ? stampSetForColor(drink.color) : null;
+  if (!set){
+    wrap.hidden = true;
+    return;
+  }
+  const idx = hashStampIndex(drink.id);
+  img.onerror = () => { wrap.hidden = true; };
+  img.onload = () => { wrap.hidden = false; };
+  img.src = `stamps/${set}/${String(idx).padStart(2, '0')}.png`;
 }
 
 /* =========================================================
@@ -1622,6 +1679,13 @@ function showDoneScreen(drink, log, storeName){
   document.getElementById('doneStore').textContent = storeName;
   showScreen('done');
 
+  const stampWrap = document.getElementById('doneStampWrap');
+  const stampImg = document.getElementById('doneStampImg');
+  stampWrap.hidden = true;
+  stampImg.onerror = () => { stampWrap.hidden = true; };
+  stampImg.onload = () => { stampWrap.hidden = false; };
+  stampImg.src = randomStampPath();
+
   pending = null;
   pendingRating = null;
 
@@ -1844,6 +1908,7 @@ async function renderHome(){
     const li = document.createElement('li');
     li.className = 'empty-state';
     li.innerHTML = `
+      <img src="stamps/white/05.png" width="140" height="118" alt="" loading="lazy" decoding="async" style="display:block;margin:0 auto 14px;border-radius:12px;" onerror="this.style.display='none'">
       <p style="font-size:19px;font-weight:700;color:var(--text);line-height:1.6;margin:0 0 10px;">まずは、うまいと思ったワインのラベルを5枚以上選んで</p>
       <p style="color:var(--muted);font-size:14px;margin:0 0 22px;">選んだ写真は全部「うまい」で入れるよ。あとから直せる</p>
       <button type="button" class="btn-primary" id="btnOnboardingPicker" style="max-width:320px;margin:0 auto;">🖼 カメラロールから選ぶ</button>
@@ -2172,6 +2237,8 @@ function renderDrinkInfo(drink){
   const colorChip = drink.color ? `<span class="drink-info-color-chip">${colorLabel(drink.color)}</span>` : '';
   const importerLine = drink.importer ? `<p class="drink-info-importer">輸入元: ${escapeHtml(drink.importer)}</p>` : '';
   const errorLine = drink.readError ? `<p class="drink-info-error">前回読み取り失敗（${escapeHtml(geminiErrorMessage(drink.readError) || drink.readError)}）</p>` : '';
+
+  updateDetailStamp(drink);
 
   wrap.innerHTML = `
     ${nameLine}

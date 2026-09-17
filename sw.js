@@ -1,5 +1,6 @@
 // 酒ログ Service Worker — シンプルな cache-first
-const CACHE_NAME = 'sakelog-v8';
+const CACHE_NAME = 'sakelog-v9';
+const STAMPS_CACHE = 'sakelog-stamps-v1'; // 肴スタンプ（APNG）専用。アプリのキャッシュ更新でも消さない
 const ASSETS = [
   './',
   './index.html',
@@ -21,7 +22,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(
-        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+        keys.filter((key) => key !== CACHE_NAME && key !== STAMPS_CACHE).map((key) => caches.delete(key))
       )
     ).then(() => self.clients.claim())
   );
@@ -29,6 +30,25 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
+
+  // 肴スタンプ（/stamps/ 配下）は専用キャッシュに cache-first で保存。一度見たら残す
+  let isStamp = false;
+  try { isStamp = new URL(event.request.url).pathname.includes('/stamps/'); } catch (e) { /* 無視 */ }
+  if (isStamp) {
+    event.respondWith(
+      caches.open(STAMPS_CACHE).then((cache) =>
+        cache.match(event.request).then((cached) => {
+          if (cached) return cached;
+          return fetch(event.request).then((res) => {
+            if (res && res.ok) cache.put(event.request, res.clone());
+            return res;
+          }).catch(() => cached);
+        })
+      )
+    );
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;
