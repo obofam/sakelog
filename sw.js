@@ -1,5 +1,5 @@
 // 酒ログ Service Worker — シンプルな cache-first
-const CACHE_NAME = 'sakelog-v13';
+const CACHE_NAME = 'sakelog-v14';
 const STAMPS_CACHE = 'sakelog-stamps-v1'; // 肴スタンプ（APNG）専用。アプリのキャッシュ更新でも消さない
 const ASSETS = [
   './',

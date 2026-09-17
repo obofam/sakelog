@@ -337,6 +337,7 @@
   }
   .sheet h3{margin:0 0 16px;font-size:20px;}
   .sheet{touch-action:pan-y;}
+  .back-bottom{width:100%;min-height:60px;margin-top:12px;font-size:18px;}
   .sheet input[type=text], .sheet input[type=password],
   #settings input[type=text], #settings input[type=password]{
     width:100%;
@@ -2991,6 +2992,15 @@ window.sakelog = {
    イベント登録
 ========================================================= */
 function init(){
+  // 長い画面の一番下にも「← 戻る」を置く（酔っていても上まで戻らなくていい）
+  document.querySelectorAll('section').forEach((sec) => {
+    const back = [...sec.querySelectorAll('button')].find((b) => /^←\s*戻る/.test(b.textContent.trim()));
+    if (!back) return;
+    const clone = document.createElement('button');
+    clone.type = 'button'; clone.className = 'btn-text back-bottom'; clone.textContent = '← 戻る';
+    clone.addEventListener('click', () => back.click());
+    sec.appendChild(clone);
+  });
   document.getElementById('btnCamera').addEventListener('click', () => {
     document.getElementById('fileCamera').click();
   });
