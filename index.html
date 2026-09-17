@@ -191,6 +191,7 @@
     flex-shrink:0;
     background:#000;
   }
+  .log-thumb.muted{opacity:0.6;}
   .log-info{flex:1;min-width:0;}
   .log-rating{font-size:16px;font-weight:700;}
   .log-store{color:var(--muted);font-size:14px;margin-top:2px;}
@@ -614,9 +615,9 @@
 
     <div class="grid2" id="homeSecondaryRow">
       <button class="btn-secondary" id="btnPicker">🖼 写真から</button>
-      <button class="btn-secondary" id="btnShelf">🛒 棚を見る</button>
+      <button class="btn-secondary" id="btnShelf">🔮 棚占い</button>
     </div>
-    <button type="button" class="btn-text" id="btnShelfHistory">🕘 前に見た棚</button>
+    <button type="button" class="btn-text" id="btnShelfHistory">🕘 前の棚占い</button>
     <input type="file" id="fileCamera" accept="image/*" capture="environment" hidden>
     <input type="file" id="filePicker" accept="image/*" multiple hidden>
     <input type="file" id="shelfInput" accept="image/*" capture="environment" hidden>
@@ -698,7 +699,7 @@
 
   <section id="shelfHistory" class="screen" hidden>
     <button type="button" class="btn-text" id="btnShelfHistoryBack">← 戻る</button>
-    <h2>前に見た棚</h2>
+    <h2>前の棚占い</h2>
     <p class="detail-meta">あれ飲んでみよう、と思ったらここ。</p>
     <div id="shelfHistoryList"></div>
   </section>
@@ -773,7 +774,7 @@
         <a href="https://line.me/S/sticker/36507457" target="_blank" rel="noopener">白ワイン編</a> ・
         <a href="https://line.me/S/sticker/36509466" target="_blank" rel="noopener">赤ワイン編</a>
       </p>
-      <p class="version-text">v0.8</p>
+      <p class="version-text">v0.9</p>
     </div>
   </section>
 
@@ -1034,7 +1035,10 @@ async function callGemini(parts){
 }
 
 const LABEL_PROMPT = `このお酒のラベル写真から情報を読み取って、次のJSON形式だけで答えてください。説明文は不要です。わからない項目はnullにしてください。値を勝手にでっち上げないでください。
+酒のラベル・ボトル・グラス・缶が主役なら is_drink=true。料理だけ・人物・風景・その他なら false。判断に迷ったら true。
 {
+  "is_drink": true または false,
+  "subject": "drink|food|person|scenery|other のいずれか",
   "kind": "wine|sake|beer|shochu|whisky|spirits|liqueur|other のいずれか",
   "name": "銘柄名",
   "producer": "生産者",
@@ -1065,6 +1069,13 @@ function geminiErrorMessage(errType){
   if (errType === 'network') return 'オフラインかも。あとで読むよ';
   if (errType === 'nokey') return null;
   return '読めなかった';
+}
+
+// 酒じゃないと判定されたときのツッコミトースト（subject別）
+function tsukkomiForSubject(subject){
+  if (subject === 'food') return 'それ食べ物やないかーい！ 好みの計算からは外しておくね';
+  if (subject === 'person') return '人やないかーい！ 好みの計算からは外しておくね';
+  return '酒どこ？ 好みの計算からは外しておくね';
 }
 
 /* =========================================================
@@ -1234,6 +1245,8 @@ async function finalizeSave(storeId){
     readConfidence: null,
     readNote: null,
     readError: null,
+    excluded: false,
+    subject: null,
     photo: pending.photo,
     thumb: pending.thumb,
     createdAt: Date.now()
@@ -1288,6 +1301,28 @@ function setStoreButtonsDisabled(disabled){
 async function fetchLabelForDrink(drink){
   try {
     const result = await callGeminiVision(drink.photo);
+    const isDrink = result.is_drink !== false; // 判断に迷ったらtrue扱い（undefinedも許容）
+    if (!isDrink){
+      drink.kind = 'not_drink';
+      drink.excluded = true;
+      drink.subject = result.subject || 'other';
+      drink.name = null;
+      drink.producer = null;
+      drink.country = null;
+      drink.region = null;
+      drink.grape = null;
+      drink.vintage = null;
+      drink.color = null;
+      drink.importer = null;
+      drink.confirmed = false;
+      drink.readAt = Date.now();
+      drink.readConfidence = (typeof result.confidence === 'number') ? result.confidence : null;
+      drink.readNote = result.note || null;
+      drink.readError = null;
+      await dbPut('drinks', drink);
+      return { ok: true, drink };
+    }
+    drink.excluded = false;
     if (result.kind) drink.kind = result.kind;
     drink.name = result.name || null;
     drink.producer = result.producer || null;
@@ -1321,7 +1356,11 @@ async function autoReadLabel(drinkId){
   toast('ラベル読んでるよ…');
   const res = await fetchLabelForDrink(drink);
   if (res.ok){
-    toast(`読めたよ：${res.drink.name || '(名前なし)'}`);
+    if (res.drink.excluded){
+      toast(tsukkomiForSubject(res.drink.subject));
+    } else {
+      toast(`読めたよ：${res.drink.name || '(名前なし)'}`);
+    }
     if (!document.getElementById('home').hidden) renderHome();
     if (!document.getElementById('detail').hidden && detailLogId){
       const log = await dbGet('logs', detailLogId);
@@ -1347,7 +1386,11 @@ async function rereadLabelFromDetail(){
   if (editBtn) editBtn.disabled = true;
   const res = await fetchLabelForDrink(drink);
   if (res.ok){
-    toast(`読めたよ：${res.drink.name || '(名前なし)'}`);
+    if (res.drink.excluded){
+      toast(tsukkomiForSubject(res.drink.subject));
+    } else {
+      toast(`読めたよ：${res.drink.name || '(名前なし)'}`);
+    }
   } else {
     const msg = geminiErrorMessage(res.errType);
     if (msg) toast(msg);
@@ -1361,6 +1404,7 @@ function getUnreadLabelTargets(drinks){
   const ONE_DAY = 24 * 60 * 60 * 1000;
   const now = Date.now();
   return drinks.filter((d) => {
+    if (d.excluded) return false; // 酒じゃないと判定済みは再読み取り対象にしない（読み直すは詳細画面から明示的に）
     if (d.name != null) return false;
     if (!d.readError) return true;
     return !d.readAt || (now - d.readAt > ONE_DAY);
@@ -1381,12 +1425,14 @@ async function readUnreadLabelsBatch(){
     return;
   }
   btn.disabled = true;
-  let okCount = 0;
+  let drinkCount = 0;
+  let excludedCount = 0;
   for (let i = 0; i < targets.length; i++){
     btn.textContent = `${i + 1}/${targets.length} 読み取り中…`;
     const res = await fetchLabelForDrink(targets[i]);
     if (res.ok){
-      okCount++;
+      if (res.drink.excluded) excludedCount++;
+      else drinkCount++;
     } else if (res.errType === 'auth'){
       toast(geminiErrorMessage(res.errType));
       break;
@@ -1395,7 +1441,7 @@ async function readUnreadLabelsBatch(){
   }
   btn.disabled = false;
   btn.textContent = '📖 未読のラベルをまとめて読み取る';
-  toast(`${okCount}件読み取ったよ`);
+  toast(excludedCount > 0 ? `読めた ${drinkCount}本、酒じゃないの ${excludedCount}枚` : `${drinkCount}件読み取ったよ`);
   renderHome();
 }
 
@@ -1446,6 +1492,8 @@ async function startBulkImport(files, onboarding){
         readConfidence: null,
         readNote: null,
         readError: null,
+        excluded: false,
+        subject: null,
         importKey,
         photo,
         thumb,
@@ -1941,14 +1989,22 @@ async function renderHome(){
     const thumbUrl = URL.createObjectURL(drink.thumb);
     homeThumbUrls.push(thumbUrl);
 
-    const nameLine = drink.name
-      ? `<span class="log-name">${escapeHtml(drink.name)}</span>`
-      : `<span class="log-name muted">名前 まだ</span>`;
+    let nameLine;
+    if (drink.excluded){
+      const subjLabel = drink.subject === 'food' ? '🍽 肴？'
+        : drink.subject === 'person' ? '🙋 人'
+        : '📷 酒じゃない写真';
+      nameLine = `<span class="log-name muted">${subjLabel}</span>`;
+    } else {
+      nameLine = drink.name
+        ? `<span class="log-name">${escapeHtml(drink.name)}</span>`
+        : `<span class="log-name muted">名前 まだ</span>`;
+    }
     const storeName = store ? escapeHtml(store.name) : '店：あとで';
     const provisionalTag = log.provisional ? ' <span class="tag-provisional">仮</span>' : '';
 
     btn.innerHTML = `
-      <img class="log-thumb" src="${thumbUrl}" alt="">
+      <img class="log-thumb${drink.excluded ? ' muted' : ''}" src="${thumbUrl}" alt="">
       <span class="log-info">
         ${nameLine}
         <span class="log-sub">${info.emoji} ${info.label}${provisionalTag} · ${storeName} · ${fmtDate(log.drankAt)}</span>
@@ -1963,7 +2019,7 @@ async function renderHome(){
 
   const provisionalCount = logs.filter((l) => l.provisional).length;
   const drinkIdsWithLog = new Set(logs.map((l) => l.drinkId));
-  const readCount = drinksArr.filter((d) => d.name != null && drinkIdsWithLog.has(d.id)).length;
+  const readCount = drinksArr.filter((d) => d.name != null && !d.excluded && drinkIdsWithLog.has(d.id)).length;
 
   updateStatusLine(logs, provisionalCount, readCount);
   await updateProfileSection(readCount);
@@ -2089,7 +2145,7 @@ async function buildProfileDataset(){
   const rows = [];
   logsArr.forEach((log) => {
     const drink = drinkMap.get(log.drinkId);
-    if (!drink || drink.name == null) return;
+    if (!drink || drink.name == null || drink.excluded) return;
     const store = log.storeId ? storeMap.get(log.storeId) : null;
     rows.push({ drink, log, store });
   });
@@ -2220,6 +2276,22 @@ let detailEditing = false;
 function renderDrinkInfo(drink){
   const wrap = document.getElementById('drinkInfo');
   if (!drink){ wrap.innerHTML = ''; return; }
+
+  if (drink.excluded){
+    wrap.innerHTML = `
+      <p class="drink-info-sub">好みの計算には入れてないよ</p>
+      <div class="drink-info-actions">
+        <button type="button" class="btn-secondary" id="btnUnexclude">🍷 これは酒だよ（読み直す）</button>
+      </div>
+    `;
+    document.getElementById('btnUnexclude').addEventListener('click', async () => {
+      drink.excluded = false;
+      drink.kind = 'wine';
+      await dbPut('drinks', drink);
+      await rereadLabelFromDetail();
+    });
+    return;
+  }
 
   if (detailEditing){
     const colors = ['red', 'white', 'rose', 'sparkling', 'orange'];
@@ -2504,7 +2576,7 @@ async function openShelfHistory(){
     const entries = await dbGetAll('shelves');
     if (token !== shelfViewToken) return;
     list.replaceChildren();
-    if (!entries.length) list.textContent = '棚を撮ると、写真と提案がここに残るよ。';
+    if (!entries.length) list.textContent = '棚を占うと、写真とお告げがここに残るよ。';
     entries.sort((a,b) => b.createdAt - a.createdAt).forEach(entry => {
       const button = document.createElement('button');
       button.className = 'btn-secondary';
@@ -2516,7 +2588,7 @@ async function openShelfHistory(){
       button.innerHTML = `<img src="${url}" alt="棚の写真" style="width:100%;height:150px;object-fit:cover;border-radius:12px;">
         <p>${escapeHtml(entry.place || '場所未入力')}</p>
         <p class="detail-meta">${escapeHtml(new Date(entry.createdAt).toLocaleString('ja-JP'))}</p>
-        <p>${escapeHtml(names.join(' ／ ') || (entry.result ? 'この棚ではおすすめなし' : '写真を保存済み・提案なし'))}</p>`;
+        <p>${escapeHtml(names.join(' ／ ') || (entry.result ? 'このお告げなし' : '写真を保存済み・提案なし'))}</p>`;
       button.onclick = () => openSavedShelf(entry.id);
       list.appendChild(button);
     });
@@ -2560,7 +2632,7 @@ async function buildShelfContext(){
   const rated = [];
   logsArr.forEach((log) => {
     const drink = drinkMap.get(log.drinkId);
-    if (!drink || drink.name == null) return;
+    if (!drink || drink.name == null || drink.excluded) return;
     rated.push({ drink, rating: log.rating });
   });
   rated.sort((a, b) => b.rating - a.rating);
@@ -2603,7 +2675,7 @@ ${context}
 }
 
 function renderShelfLoading(){
-  document.getElementById('shelfBody').innerHTML = '<p class="shelf-loading">棚を見てるよ…</p>';
+  document.getElementById('shelfBody').innerHTML = '<p class="shelf-loading">棚を占ってるよ…🔮</p>';
 }
 
 function renderShelfError(msg){
@@ -2625,7 +2697,7 @@ function renderShelfResult(result){
   let html = '';
 
   if (result.verdict === 'hit'){
-    html += `<h2 style="text-align:left;margin:16px 0 10px;">この中ならこれ</h2>`;
+    html += `<h2 style="text-align:left;margin:16px 0 10px;">お告げ：この中ならこれ</h2>`;
     (result.picks || []).forEach((p) => { html += shelfCardHtml(p, false); });
     if (result.adventure){
       html += `<p class="section-label">冒険するなら</p>`;
@@ -2635,7 +2707,7 @@ function renderShelfResult(result){
     html += `<h2 style="text-align:left;margin:16px 0 10px;">直球はない。冒険するなら</h2>`;
     if (result.adventure) html += shelfCardHtml(result.adventure, true);
   } else {
-    html += `<p class="shelf-none">この中にはないよ。今日はビールにしておこう</p>`;
+    html += `<p class="shelf-none">お告げ：この中にはない。今日はビールにしておこう</p>`;
     if (result.none_reason) html += `<p class="shelf-none-reason">${escapeHtml(result.none_reason)}</p>`;
   }
 
