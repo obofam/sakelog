@@ -630,6 +630,7 @@
     <button class="btn-primary" id="btnCamera">📷 撮る</button>
     <button class="btn-secondary" id="btnPicker" style="margin-bottom:14px;">🖼 カメラロールから選ぶ</button>
     <button class="btn-shelf" id="btnShelf">🛒 棚を撮る（この中ならどれ？）</button>
+    <button class="btn-secondary" id="btnShelfHistory">🕘 前に見た棚</button>
     <input type="file" id="fileCamera" accept="image/*" capture="environment" hidden>
     <input type="file" id="filePicker" accept="image/*" multiple hidden>
     <input type="file" id="shelfInput" accept="image/*" capture="environment" hidden>
@@ -690,8 +691,26 @@
   <section id="shelf" class="screen" hidden>
     <button class="back-btn" id="btnShelfBack">← 戻る</button>
     <img class="detail-photo" id="shelfPhoto" style="max-height:36vh;" alt="棚の写真">
+    <p id="shelfMeta" class="detail-meta" aria-live="polite"></p>
+    <div id="shelfLocation" hidden>
+      <label for="shelfPlace">ちなみに今どこ？（任意）</label>
+      <div id="shelfPlaceChoices" class="grid2" style="margin:12px 0;"></div>
+      <form id="shelfPlaceForm">
+        <input id="shelfPlace" type="text" maxlength="120" placeholder="店名・場所（例：サミット ○○店）">
+        <button class="btn-secondary" type="submit">場所を残す</button>
+      </form>
+      <button class="link-btn" id="btnShelfPlaceSkip">今は入れない</button>
+    </div>
+    <button class="link-btn" id="btnShelfPlaceEdit" hidden>場所を入れる・変える</button>
     <div id="shelfBody"></div>
     <button class="btn-secondary" id="btnShelfAgain" style="margin-top:14px;">📷 もう一枚</button>
+  </section>
+
+  <section id="shelfHistory" class="screen" hidden>
+    <button class="back-btn" id="btnShelfHistoryBack">← 戻る</button>
+    <h2>前に見た棚</h2>
+    <p class="detail-meta">あれ飲んでみよう、と思ったらここ。</p>
+    <div id="shelfHistoryList"></div>
   </section>
 
   <!-- ============ DONE ============ -->
@@ -765,7 +784,7 @@
    （将来追加予定: fuzzy＝あいまい記録用, profile＝好み分析用。MVPでは未実装）
 ========================================================= */
 const DB_NAME = 'sakelog';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 let dbPromise = null;
 
 function openDB(){
@@ -790,8 +809,14 @@ function openDB(){
       if (!db.objectStoreNames.contains('profile')){
         db.createObjectStore('profile', { keyPath: 'id' });
       }
+      if (!db.objectStoreNames.contains('shelves')){
+        db.createObjectStore('shelves', { keyPath: 'id' });
+      }
     };
-    req.onsuccess = (e) => resolve(e.target.result);
+    req.onsuccess = (e) => {
+      e.target.result.onversionchange = () => { e.target.result.close(); dbPromise = null; };
+      resolve(e.target.result);
+    };
     req.onerror = (e) => reject(e.target.error);
   });
   return dbPromise;
@@ -987,7 +1012,7 @@ function geminiErrorMessage(errType){
 /* =========================================================
    画面切り替え
 ========================================================= */
-const screens = ['home', 'rate', 'store', 'done', 'detail', 'stores', 'importing', 'triage', 'shelf'];
+const screens = ['home', 'rate', 'store', 'done', 'detail', 'stores', 'importing', 'triage', 'shelf', 'shelfHistory'];
 function showScreen(id){
   screens.forEach((s) => {
     document.getElementById(s).hidden = (s !== id);
@@ -2246,6 +2271,122 @@ async function handleDeleteClick(){
    棚モード（この中ならどれ？）
 ========================================================= */
 let shelfPhotoUrl = null;
+let activeShelfId = null;
+let shelfViewToken = 0;
+let shelfBackTarget = 'home';
+let shelfHistoryUrls = [];
+
+// 場所入力とAIの完了が重なっても、互いの更新を消さない。
+async function updateShelf(id, changes){
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('shelves', 'readwrite');
+    const store = tx.objectStore('shelves');
+    let updated;
+    const req = store.get(id);
+    req.onsuccess = () => {
+      updated = { ...(req.result || { id }), ...changes };
+      store.put(updated);
+    };
+    tx.oncomplete = () => resolve(updated);
+    tx.onabort = () => reject(tx.error || new Error('保存できませんでした'));
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+function renderShelfMeta(entry){
+  document.getElementById('shelfMeta').textContent =
+    `${new Date(entry.createdAt).toLocaleString('ja-JP')} ・ ${entry.place || '場所未入力'} ・ 保存済み`;
+}
+
+async function showShelfLocation(entry, expanded){
+  renderShelfMeta(entry);
+  document.getElementById('shelfPlace').value = entry.place || '';
+  document.getElementById('shelfLocation').hidden = !expanded;
+  document.getElementById('btnShelfPlaceEdit').hidden = expanded;
+  const choices = document.getElementById('shelfPlaceChoices');
+  choices.replaceChildren();
+  const [shelves, stores] = await Promise.all([dbGetAll('shelves'), dbGetAll('stores')]);
+  if (activeShelfId !== entry.id) return;
+  const names = [...new Set([
+    ...shelves.sort((a,b) => b.createdAt - a.createdAt).map(s => s.place),
+    ...stores.sort((a,b) => (b.lastUsedAt || 0) - (a.lastUsedAt || 0)).map(s => s.name)
+  ].filter(Boolean))].slice(0, 3);
+  names.forEach(name => {
+    const button = document.createElement('button');
+    button.className = 'btn-store';
+    button.textContent = name;
+    button.onclick = () => saveShelfPlace(name);
+    choices.appendChild(button);
+  });
+}
+
+async function saveShelfPlace(place){
+  const id = activeShelfId;
+  if (!id) return;
+  try {
+    const entry = await updateShelf(id, { place: place.trim().slice(0,120) || null });
+    if (activeShelfId !== id) return;
+    renderShelfMeta(entry);
+    document.getElementById('shelfLocation').hidden = true;
+    document.getElementById('btnShelfPlaceEdit').hidden = false;
+    toast('場所を残したよ');
+  } catch (err) { toast('場所を保存できなかった。もう一度試してね'); }
+}
+
+function clearShelfHistoryUrls(){
+  shelfHistoryUrls.forEach(url => URL.revokeObjectURL(url));
+  shelfHistoryUrls = [];
+}
+
+async function openShelfHistory(){
+  const token = ++shelfViewToken;
+  activeShelfId = null;
+  clearShelfHistoryUrls();
+  showScreen('shelfHistory');
+  const list = document.getElementById('shelfHistoryList');
+  list.textContent = '読み込み中…';
+  try {
+    const entries = await dbGetAll('shelves');
+    if (token !== shelfViewToken) return;
+    list.replaceChildren();
+    if (!entries.length) list.textContent = '棚を撮ると、写真と提案がここに残るよ。';
+    entries.sort((a,b) => b.createdAt - a.createdAt).forEach(entry => {
+      const button = document.createElement('button');
+      button.className = 'btn-secondary';
+      button.style.textAlign = 'left';
+      const url = URL.createObjectURL(entry.photo);
+      shelfHistoryUrls.push(url);
+      const names = (entry.result?.picks || []).map(p => p.name).filter(Boolean);
+      if (entry.result?.adventure?.name) names.push(entry.result.adventure.name);
+      button.innerHTML = `<img src="${url}" alt="棚の写真" style="width:100%;height:150px;object-fit:cover;border-radius:12px;">
+        <p>${escapeHtml(entry.place || '場所未入力')}</p>
+        <p class="detail-meta">${escapeHtml(new Date(entry.createdAt).toLocaleString('ja-JP'))}</p>
+        <p>${escapeHtml(names.join(' ／ ') || (entry.result ? 'この棚ではおすすめなし' : '写真を保存済み・提案なし'))}</p>`;
+      button.onclick = () => openSavedShelf(entry.id);
+      list.appendChild(button);
+    });
+  } catch (err) { list.textContent = '履歴を読み込めなかった。もう一度開いてね。'; }
+}
+
+async function openSavedShelf(id){
+  const token = ++shelfViewToken;
+  try {
+    const entry = await dbGet('shelves', id);
+    if (token !== shelfViewToken || !entry) return;
+    clearShelfHistoryUrls();
+    activeShelfId = id;
+    shelfBackTarget = 'shelfHistory';
+    showScreen('shelf');
+    if (shelfPhotoUrl) URL.revokeObjectURL(shelfPhotoUrl);
+    shelfPhotoUrl = URL.createObjectURL(entry.photo);
+    document.getElementById('shelfPhoto').src = shelfPhotoUrl;
+    await showShelfLocation(entry, false);
+    if (token !== shelfViewToken) return;
+    if (entry.result) renderShelfResult(entry.result);
+    else renderShelfError('写真は残っているよ。提案はまだ保存されていません。');
+  } catch (err) { toast('履歴を開けなかった。もう一度試してね'); }
+}
 
 // Gemini Vision呼び出し（好きなプロンプトを渡せる版。ラベル読み取り用のcallGeminiVisionとは別）
 async function callGeminiVisionWithPrompt(photoBlob, promptText){
@@ -2362,40 +2503,58 @@ function renderShelfResult(result){
     document.getElementById('btnShelfBottlesToggle').textContent = `${willOpen ? '▾' : '▸'} 読めたボトル ${bottles.length}本`;
   });
 
-  // TODO: 「探した」記録として scouts ストアに保存する機能は将来追加予定。今は何も保存しない。
 }
 
 async function handleShelfPhoto(file){
   if (!file) return;
-  if (!getGeminiKey()){
-    toast('設定でGeminiキーを入れてね');
-    return;
-  }
+  const token = ++shelfViewToken;
+  const id = uuid();
+  const createdAt = Date.now();
+  activeShelfId = null;
+  shelfBackTarget = 'home';
   showScreen('shelf');
+  document.getElementById('shelfPhoto').removeAttribute('src');
+  document.getElementById('shelfMeta').textContent = '写真を保存中…';
+  document.getElementById('shelfLocation').hidden = true;
+  document.getElementById('btnShelfPlaceEdit').hidden = true;
   renderShelfLoading();
+  let saved = false;
   try {
     const bitmap = await loadBitmap(file);
     const canvas = drawToCanvas(bitmap, 1800); // ラベルが読めるよう長辺1800pxまで
     const blob = await canvasToBlob(canvas, 0.85);
     if (bitmap.close) bitmap.close();
 
+    const entry = await updateShelf(id, { photo: blob, createdAt, place: null, result: null });
+    saved = true;
+    if (token !== shelfViewToken) return;
+    activeShelfId = id;
     if (shelfPhotoUrl) URL.revokeObjectURL(shelfPhotoUrl);
     shelfPhotoUrl = URL.createObjectURL(blob);
     document.getElementById('shelfPhoto').src = shelfPhotoUrl;
-    // 棚の写真自体はIndexedDBには保存しない
+    await showShelfLocation(entry, true);
+    if (!getGeminiKey()){
+      if (token === shelfViewToken) renderShelfError('写真は残したよ。提案を見るには設定でGeminiキーを入れてね。');
+      return;
+    }
 
     const context = await buildShelfContext();
     const prompt = buildShelfPrompt(context);
     const result = await callGeminiVisionWithPrompt(blob, prompt);
-    renderShelfResult(result);
+    await updateShelf(id, { result });
+    if (token === shelfViewToken) renderShelfResult(result);
   } catch (err) {
-    const errType = (err && err.type) || 'other';
-    renderShelfError(geminiErrorMessage(errType) || '読めなかった');
+    if (token !== shelfViewToken) return;
+    if (!saved) document.getElementById('shelfMeta').textContent = '写真を保存できませんでした';
+    renderShelfError(saved ? '写真は残したよ。提案を取得・保存できなかった。' : '写真を保存できなかった。もう一度試してね。');
   }
 }
 
 function leaveShelf(){
+  ++shelfViewToken;
+  activeShelfId = null;
   if (shelfPhotoUrl){ URL.revokeObjectURL(shelfPhotoUrl); shelfPhotoUrl = null; }
+  if (shelfBackTarget === 'shelfHistory') { openShelfHistory(); return; }
   showScreen('home');
   renderHome();
 }
@@ -2425,13 +2584,14 @@ function renderGeminiKeyUI(){
 }
 
 async function exportJSON(){
-  const [stores, drinksArr, logs, profileArr] = await Promise.all([
-    dbGetAll('stores'), dbGetAll('drinks'), dbGetAll('logs'), dbGetAll('profile')
+  const [stores, drinksArr, logs, profileArr, shelvesArr] = await Promise.all([
+    dbGetAll('stores'), dbGetAll('drinks'), dbGetAll('logs'), dbGetAll('profile'), dbGetAll('shelves')
   ]);
   // Blob（photo/thumb）は除いてメタデータだけ出す
   const drinks = drinksArr.map(({ photo, thumb, ...rest }) => rest);
   const profile = profileArr[0] || null;
-  return JSON.stringify({ stores, drinks, logs, profile }, null, 2);
+  const shelves = shelvesArr.map(({ photo, ...rest }) => rest);
+  return JSON.stringify({ stores, drinks, logs, profile, shelves }, null, 2);
 }
 window.sakelog = { exportJSON };
 
@@ -2468,11 +2628,29 @@ function init(){
   });
 
   document.getElementById('btnShelf').addEventListener('click', () => {
-    if (!getGeminiKey()){
-      toast('設定でGeminiキーを入れてね');
-      return;
-    }
     document.getElementById('shelfInput').click();
+  });
+  document.getElementById('btnShelfHistory').addEventListener('click', openShelfHistory);
+  document.getElementById('btnShelfHistoryBack').addEventListener('click', () => {
+    ++shelfViewToken;
+    clearShelfHistoryUrls();
+    showScreen('home');
+    renderHome();
+  });
+  document.getElementById('shelfPlaceForm').addEventListener('submit', e => {
+    e.preventDefault();
+    saveShelfPlace(document.getElementById('shelfPlace').value);
+  });
+  document.getElementById('btnShelfPlaceSkip').addEventListener('click', () => {
+    document.getElementById('shelfLocation').hidden = true;
+    document.getElementById('btnShelfPlaceEdit').hidden = false;
+  });
+  document.getElementById('btnShelfPlaceEdit').addEventListener('click', async () => {
+    const id = activeShelfId;
+    try {
+      const entry = await dbGet('shelves', id);
+      if (entry && activeShelfId === id) await showShelfLocation(entry, true);
+    } catch (err) { toast('場所を読み込めなかった。もう一度試してね'); }
   });
   document.getElementById('shelfInput').addEventListener('change', (e) => {
     const file = e.target.files[0];
