@@ -326,11 +326,19 @@
   .sheet{
     width:100%;
     max-width:480px;
+    max-height:90vh;
+    max-height:90dvh;
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+    overscroll-behavior:contain;
     background:var(--surface);
     border-radius:22px 22px 0 0;
     padding:24px calc(env(safe-area-inset-left) + 20px) calc(env(safe-area-inset-bottom) + 24px) calc(env(safe-area-inset-right) + 20px);
   }
   .sheet h3{margin:0 0 16px;font-size:20px;}
+  .sheet-head{position:sticky;top:-24px;margin:-24px -20px 16px;padding:16px 20px 12px;background:var(--surface);display:flex;align-items:center;justify-content:space-between;z-index:1;}
+  .sheet-head h3{margin:0;}
+  body.sheet-open{overflow:hidden;}
   .sheet input[type=text], .sheet input[type=password]{
     width:100%;
     font-size:19px;
@@ -744,7 +752,7 @@
 <!-- 設定シート -->
 <div class="overlay" id="settingsOverlay" hidden>
   <div class="sheet">
-    <h3>設定</h3>
+    <div class="sheet-head"><h3>設定</h3><button class="btn-text" id="btnCloseSettings" type="button">閉じる ✕</button></div>
 
     <div class="sheet-section">
       <p class="section-label" style="margin:0;">データ</p>
@@ -2884,7 +2892,14 @@ async function renderBackupUI(){
 function openSettingsSheet(){
   renderGeminiKeyUI();
   renderBackupUI();
-  document.getElementById('settingsOverlay').hidden = false;
+  const ov = document.getElementById('settingsOverlay');
+  ov.hidden = false;
+  ov.querySelector('.sheet').scrollTop = 0;
+  document.body.classList.add('sheet-open');
+}
+function closeSettingsSheet(){
+  document.getElementById('settingsOverlay').hidden = true;
+  document.body.classList.remove('sheet-open');
 }
 
 async function handleBackupExport(){
@@ -3041,7 +3056,7 @@ function init(){
   document.getElementById('btnTriageBack').addEventListener('click', closeTriage);
   document.getElementById('btnTriageAllGood').addEventListener('click', handleTriageAllGood);
   document.getElementById('btnTriageFromSettings').addEventListener('click', () => {
-    document.getElementById('settingsOverlay').hidden = true;
+    closeSettingsSheet();
     openTriage();
   });
 
@@ -3079,6 +3094,7 @@ function init(){
   document.getElementById('btnDelete').addEventListener('click', handleDeleteClick);
 
   document.getElementById('btnSettings').addEventListener('click', openSettingsSheet);
+  document.getElementById('btnCloseSettings').addEventListener('click', closeSettingsSheet);
   document.getElementById('btnBackupExport').addEventListener('click', handleBackupExport);
   document.getElementById('btnBackupRestore').addEventListener('click', () => {
     document.getElementById('backupRestoreInput').click();
@@ -3090,7 +3106,7 @@ function init(){
   });
   document.getElementById('settingsOverlay').addEventListener('click', (e) => {
     if (e.target.id === 'settingsOverlay'){
-      document.getElementById('settingsOverlay').hidden = true;
+      closeSettingsSheet();
     }
   });
   document.getElementById('btnExportJson').addEventListener('click', async () => {
@@ -3098,7 +3114,7 @@ function init(){
     downloadJSON(json);
   });
   document.getElementById('btnStoresEditFromSettings').addEventListener('click', () => {
-    document.getElementById('settingsOverlay').hidden = true;
+    closeSettingsSheet();
     openStoresEdit('home');
   });
   document.getElementById('btnReadUnread').addEventListener('click', readUnreadLabelsBatch);
