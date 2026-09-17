@@ -786,6 +786,7 @@
 
     <div class="sheet-section">
       <p class="section-label" style="margin:0;">ラベル読み取り</p>
+      <p class="detail-meta" style="text-align:left;margin:0;" id="trialStatus" hidden></p>
       <input type="password" id="geminiKeyInput" autocomplete="off" placeholder="APIキーを貼り付け">
       <div class="grid2">
         <button class="btn-secondary" id="btnSaveGeminiKey">保存</button>
@@ -809,7 +810,7 @@
         <a href="https://line.me/S/sticker/36507457" target="_blank" rel="noopener">白ワイン編</a> ・
         <a href="https://line.me/S/sticker/36509466" target="_blank" rel="noopener">赤ワイン編</a>
       </p>
-      <p class="version-text">v0.10</p>
+      <p class="version-text">v0.11</p>
     </div>
   </section>
 
@@ -1056,6 +1057,7 @@ function updateDetailStamp(drink){
    通信先は generativelanguage.googleapis.com のみ。
 ========================================================= */
 const GEMINI_MODEL = 'gemini-3.6-flash'; // 動作確認済み（2026-09時点。gemini-2.5-flash/2.0-flashは廃止済みだった）
+const RELAY_URL = ''; // 空ならお試し中継は無効。relay/README.md の手順でデプロイしたらそのURLを入れる
 
 function getGeminiKey(){
   try { return (localStorage.getItem('sakelog.geminiKey') || '').trim(); } catch (e) { return ''; }
@@ -1065,6 +1067,41 @@ function setGeminiKey(key){
     if (key) localStorage.setItem('sakelog.geminiKey', key);
     else localStorage.removeItem('sakelog.geminiKey');
   } catch (e) { /* localStorage不可な環境は無視 */ }
+}
+
+// お試し中継（RELAY_URL）用の端末ID。この端末だけで完結し、サーバー側では回数管理にしか使わない
+function getDeviceId(){
+  try {
+    let id = localStorage.getItem('sakelog.deviceId');
+    if (!id){
+      id = uuid();
+      localStorage.setItem('sakelog.deviceId', id);
+    }
+    return id;
+  } catch (e) { return null; }
+}
+function getTrialRemaining(){
+  try {
+    const v = localStorage.getItem('sakelog.trialRemaining');
+    return v == null ? null : parseInt(v, 10);
+  } catch (e) { return null; }
+}
+function setTrialRemaining(n){
+  try {
+    if (n == null || isNaN(n)) localStorage.removeItem('sakelog.trialRemaining');
+    else localStorage.setItem('sakelog.trialRemaining', String(n));
+  } catch (e) { /* 無視 */ }
+}
+// 自分のキー、またはお試し中継が使えるか（お試し枠が0とわかっている場合はfalse）
+function hasGeminiAccess(){
+  if (getGeminiKey()) return true;
+  if (!RELAY_URL) return false;
+  return getTrialRemaining() !== 0;
+}
+// hasGeminiAccess()がfalseのときの案内文
+function noAccessMessage(){
+  if (RELAY_URL && getTrialRemaining() === 0) return geminiErrorMessage('trial_exhausted');
+  return '設定でGeminiキーを入れてね';
 }
 
 function blobToBase64(blob){
@@ -1080,10 +1117,16 @@ function blobToBase64(blob){
   });
 }
 
-// エラーは { type: 'nokey' | 'auth' | 'network' | 'other' } の形で投げる
-async function callGemini(parts){
+// エラーは { type: 'nokey' | 'auth' | 'network' | 'trial_exhausted' | 'trial_disabled' | 'daily_cap' | 'other' } の形で投げる
+// 自分のキーがあれば直接Geminiへ、なければRELAY_URLがある場合だけお試し中継経由で呼ぶ
+async function callGemini(parts, kind){
   const key = getGeminiKey();
-  if (!key) throw { type: 'nokey' };
+  if (key) return callGeminiDirect(parts, key);
+  if (RELAY_URL) return callGeminiRelay(parts, kind);
+  throw { type: 'nokey' };
+}
+
+async function callGeminiDirect(parts, key){
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(key)}`;
   const body = {
     contents: [{ parts }],
@@ -1101,6 +1144,37 @@ async function callGemini(parts){
   }
   if (res.status === 401 || res.status === 403) throw { type: 'auth' };
   if (!res.ok) throw { type: 'other', status: res.status };
+  return extractGeminiJson(res);
+}
+
+async function callGeminiRelay(parts, kind){
+  const deviceId = getDeviceId();
+  if (!deviceId) throw { type: 'other' };
+  const body = {
+    kind: kind || 'label',
+    contents: [{ parts }],
+    generationConfig: { response_mime_type: 'application/json' }
+  };
+  let res;
+  try {
+    res = await fetch(`${RELAY_URL}/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Sakelog-Device': deviceId },
+      body: JSON.stringify(body)
+    });
+  } catch (e) {
+    throw { type: 'network' };
+  }
+  const remainingHeader = res.headers.get('X-Trial-Remaining');
+  if (remainingHeader != null) setTrialRemaining(parseInt(remainingHeader, 10));
+  if (res.status === 429) throw { type: 'trial_exhausted' };
+  if (res.status === 403) throw { type: 'trial_disabled' };
+  if (res.status === 503) throw { type: 'daily_cap' };
+  if (!res.ok) throw { type: 'other', status: res.status };
+  return extractGeminiJson(res);
+}
+
+async function extractGeminiJson(res){
   let data;
   try { data = await res.json(); } catch (e) { throw { type: 'other' }; }
   const text = data && data.candidates && data.candidates[0]
@@ -1138,16 +1212,19 @@ async function callGeminiVision(photoBlob){
   return callGemini([
     { inline_data: { mime_type: 'image/jpeg', data: base64 } },
     { text: LABEL_PROMPT }
-  ]);
+  ], 'label');
 }
 async function callGeminiText(prompt){
-  return callGemini([{ text: prompt }]);
+  return callGemini([{ text: prompt }], 'profile');
 }
 
 function geminiErrorMessage(errType){
   if (errType === 'auth') return 'キーが違うみたい';
   if (errType === 'network') return 'オフラインかも。あとで読むよ';
   if (errType === 'nokey') return null;
+  if (errType === 'trial_exhausted') return 'お試し枠が終わったよ。自分のキーを入れると続けられる（設定 → 取り方）';
+  if (errType === 'trial_disabled') return 'お試しは今お休み中。自分のキーを入れてね';
+  if (errType === 'daily_cap') return '今日はみんなの分が上限。明日また試してね';
   return '読めなかった';
 }
 
@@ -1359,7 +1436,7 @@ async function finalizeSave(storeId){
 
   showDoneScreen(drink, log, storeName);
 
-  if (getGeminiKey()){
+  if (hasGeminiAccess()){
     autoReadLabel(drinkId).catch(() => {});
   }
 
@@ -1452,8 +1529,8 @@ async function autoReadLabel(drinkId){
 
 // 詳細画面の「🔁 ラベルを読み直す」
 async function rereadLabelFromDetail(){
-  if (!getGeminiKey()){
-    toast('設定でGeminiキーを入れてね');
+  if (!hasGeminiAccess()){
+    toast(noAccessMessage());
     return;
   }
   const log = await dbGet('logs', detailLogId);
@@ -1493,8 +1570,8 @@ function getUnreadLabelTargets(drinks){
 
 // 設定シートの「📖 未読のラベルをまとめて読み取る」
 async function readUnreadLabelsBatch(){
-  if (!getGeminiKey()){
-    toast('設定でGeminiキーを入れてね');
+  if (!hasGeminiAccess()){
+    toast(noAccessMessage());
     return;
   }
   const btn = document.getElementById('btnReadUnread');
@@ -1507,13 +1584,14 @@ async function readUnreadLabelsBatch(){
   btn.disabled = true;
   let drinkCount = 0;
   let excludedCount = 0;
+  const stopTypes = ['auth', 'trial_exhausted', 'trial_disabled', 'daily_cap'];
   for (let i = 0; i < targets.length; i++){
     btn.textContent = `${i + 1}/${targets.length} 読み取り中…`;
     const res = await fetchLabelForDrink(targets[i]);
     if (res.ok){
       if (res.drink.excluded) excludedCount++;
       else drinkCount++;
-    } else if (res.errType === 'auth'){
+    } else if (stopTypes.includes(res.errType)){
       toast(geminiErrorMessage(res.errType));
       break;
     }
@@ -1605,7 +1683,7 @@ async function startBulkImport(files, onboarding){
     toast(`${imported}本取り込んだよ（${skipped}本はもうあった）`);
   }
 
-  if (getGeminiKey() && imported > 0){
+  if (hasGeminiAccess() && imported > 0){
     await runLabelBatchDuringImport();
   }
 
@@ -1613,7 +1691,7 @@ async function startBulkImport(files, onboarding){
     showScreen('home');
     await renderHome();
     toast(`${imported}本を「うまい」で入れたよ。詳細から直せる`);
-    if (!getGeminiKey()){
+    if (!hasGeminiAccess()){
       setTimeout(() => {
         toast('Geminiキーを入れると、ラベルを読んで好みがわかるよ');
         openSettingsSheet();
@@ -1624,15 +1702,16 @@ async function startBulkImport(files, onboarding){
   }
 }
 
-// 取り込み直後、Geminiキーがあれば自動でラベルをまとめて読む（取り込み画面の進捗を流用）
+// 取り込み直後、アクセスがあれば自動でラベルをまとめて読む（取り込み画面の進捗を流用）
 async function runLabelBatchDuringImport(){
   const drinks = await dbGetAll('drinks');
   const targets = getUnreadLabelTargets(drinks);
   if (targets.length === 0) return;
+  const stopTypes = ['auth', 'trial_exhausted', 'trial_disabled', 'daily_cap'];
   for (let i = 0; i < targets.length; i++){
     setImportingProgress(i + 1, targets.length, 'ラベル読み取り中');
     const res = await fetchLabelForDrink(targets[i]);
-    if (!res.ok && res.errType === 'auth') break;
+    if (!res.ok && stopTypes.includes(res.errType)) break;
     if (i < targets.length - 1) await sleep(400);
   }
 }
@@ -2120,7 +2199,13 @@ function updateStatusLine(logs, provisionalCount, readCount){
     el.onclick = openTriage;
     return;
   }
-  if (!getGeminiKey() && logs.length >= 1){
+  if (!getGeminiKey() && RELAY_URL && getTrialRemaining() === 0){
+    el.textContent = 'お試し枠が終わったよ → 自分のキーを入れる';
+    el.hidden = false;
+    el.onclick = openSettingsSheet;
+    return;
+  }
+  if (!hasGeminiAccess() && logs.length >= 1){
     el.textContent = 'Geminiキーを入れよう → 設定';
     el.hidden = false;
     el.onclick = openSettingsSheet;
@@ -2305,8 +2390,8 @@ ${tentativeLine}- summary: 好みの言語化。2〜3文。点数の話ではな
 }
 
 async function generateProfile(){
-  if (!getGeminiKey()){
-    toast('設定でGeminiキーを入れてね');
+  if (!hasGeminiAccess()){
+    toast(noAccessMessage());
     return;
   }
   const genBtn = document.getElementById('btnGenProfile');
@@ -2701,7 +2786,7 @@ async function callGeminiVisionWithPrompt(photoBlob, promptText){
   return callGemini([
     { inline_data: { mime_type: 'image/jpeg', data: base64 } },
     { text: promptText }
-  ]);
+  ], 'shelf');
 }
 
 // 好みプロフィール + 評価済み銘柄（最大40件、評価高い順）をテキスト化してコンテキストにする
@@ -2840,8 +2925,8 @@ async function handleShelfPhoto(file){
     shelfPhotoUrl = URL.createObjectURL(blob);
     document.getElementById('shelfPhoto').src = shelfPhotoUrl;
     await showShelfLocation(entry, true);
-    if (!getGeminiKey()){
-      if (token === shelfViewToken) renderShelfError('写真は残したよ。提案を見るには設定でGeminiキーを入れてね。');
+    if (!hasGeminiAccess()){
+      if (token === shelfViewToken) renderShelfError(`写真は残したよ。${noAccessMessage()}`);
       return;
     }
 
@@ -2888,6 +2973,39 @@ function renderGeminiKeyUI(){
     clearBtn.hidden = true;
     input.placeholder = 'APIキーを貼り付け';
   }
+}
+
+// 設定シートの「ラベル読み取り」枠：お試し中継の残り回数を表示（自分のキーがあればそちらを優先表示）
+async function updateTrialStatus(){
+  const el = document.getElementById('trialStatus');
+  if (!el) return;
+  if (getGeminiKey()){
+    el.hidden = false;
+    el.textContent = '自分のキーで読んでるよ';
+    return;
+  }
+  if (!RELAY_URL){
+    el.hidden = true;
+    return;
+  }
+  el.hidden = false;
+  const cached = getTrialRemaining();
+  el.textContent = (cached != null)
+    ? `お試し枠：残り ${cached}回（作者のキーで読むよ）`
+    : 'お試し枠：確認中…（作者のキーで読むよ）';
+  try {
+    const deviceId = getDeviceId();
+    if (!deviceId) return;
+    const res = await fetch(`${RELAY_URL}/status?device=${encodeURIComponent(deviceId)}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (typeof data.remaining === 'number'){
+      setTrialRemaining(data.remaining);
+      if (!getGeminiKey()){
+        el.textContent = `お試し枠：残り ${data.remaining}回（作者のキーで読むよ）`;
+      }
+    }
+  } catch (e) { /* 取れなければキャッシュ表示のまま */ }
 }
 
 async function exportJSON(){
@@ -3043,6 +3161,7 @@ async function renderBackupUI(){
 
 function openSettingsSheet(){
   renderGeminiKeyUI();
+  updateTrialStatus();
   renderBackupUI();
   showScreen('settings');
   window.scrollTo(0, 0);
@@ -3289,12 +3408,14 @@ function init(){
     }
     setGeminiKey(v);
     renderGeminiKeyUI();
+    updateTrialStatus();
     toast('保存したよ');
     renderHome();
   });
   document.getElementById('btnClearGeminiKey').addEventListener('click', () => {
     setGeminiKey('');
     renderGeminiKeyUI();
+    updateTrialStatus();
     toast('消したよ');
     renderHome();
   });
