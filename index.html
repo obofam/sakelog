@@ -22,6 +22,7 @@
     --text:#F4EDE9;
     --muted:#A89A96;
     --danger:#E05C5C;
+    --r:16px;
   }
   *{box-sizing:border-box;}
   html,body{
@@ -59,37 +60,77 @@
   }
   button:active{transform:scale(0.97);}
   button:disabled{opacity:0.5;}
+  button:focus-visible{
+    outline:2px solid var(--accent);
+    outline-offset:2px;
+  }
 
+  /* ボタン階層：primary＝画面に1つだけの主操作／secondary＝面のある準主操作／text＝控えめな操作 */
   .btn-primary{
     width:100%;
-    min-height:72px;
+    min-height:84px;
     font-size:22px;
     font-weight:700;
-    border-radius:18px;
+    border-radius:var(--r);
     background:var(--accent);
     color:#fff;
-    margin-bottom:14px;
     display:flex;align-items:center;justify-content:center;gap:10px;
   }
   .btn-secondary{
     width:100%;
-    min-height:72px;
-    font-size:20px;
+    min-height:64px;
+    font-size:18px;
     font-weight:600;
-    border-radius:18px;
+    border-radius:var(--r);
     background:var(--surface);
     color:var(--text);
-    border:2px solid var(--accent);
+    border:1px solid rgba(255,255,255,0.08);
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    text-align:center;
+    padding:8px 10px;
+  }
+  .btn-secondary.active{
+    border-color:var(--accent);
+  }
+  .btn-secondary.cta-profile{
+    border-color:var(--accent);
+  }
+  .btn-text{
+    background:transparent;
+    border:none;
+    color:var(--muted);
+    min-height:44px;
+    font-size:16px;
+    font-weight:600;
+    padding:10px 8px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:6px;
+    align-self:flex-start;
+  }
+  .btn-text.full{
+    display:flex;
+    width:100%;
+    align-self:stretch;
+    justify-content:center;
+  }
+  .btn-text.danger{
+    color:var(--danger);
+  }
+  .btn-text.danger.confirming{
+    background:var(--danger);
+    color:#fff;
+    border-radius:var(--r);
   }
   .btn-rating{
     width:100%;
     min-height:84px;
     font-size:22px;
     font-weight:700;
-    border-radius:18px;
+    border-radius:var(--r);
     background:var(--surface);
     color:var(--text);
-    margin-bottom:14px;
     display:flex;align-items:center;justify-content:flex-start;gap:16px;
     padding:0 22px;
     border:3px solid transparent;
@@ -105,20 +146,10 @@
     grid-template-columns:1fr 1fr;
     gap:12px;
   }
-  .btn-store{
-    min-height:72px;
-    font-size:18px;
-    font-weight:600;
-    border-radius:16px;
-    background:var(--surface);
-    color:var(--text);
-    padding:8px 10px;
-    text-align:center;
-    border:3px solid transparent;
-    display:flex;align-items:center;justify-content:center;
-  }
-  .btn-store.active{
-    border-color:var(--accent);
+  .store-bottom-row{
+    display:flex;
+    justify-content:center;
+    gap:24px;
   }
 
   h1{font-size:30px;margin:6px 0 0;}
@@ -175,11 +206,20 @@
     margin-top:60px;
     line-height:1.7;
   }
-  .count-footer{
-    text-align:center;
+  .list-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+  }
+  #profileSection{
+    display:flex;
+    flex-direction:column;
+    gap:14px;
+  }
+  .list-count{
     color:var(--muted);
     font-size:14px;
-    padding-top:10px;
+    font-variant-numeric:tabular-nums;
   }
 
   .photo-preview{
@@ -200,29 +240,11 @@
     background:#000;
   }
 
-  .link-btn{
-    display:block;
-    width:100%;
-    background:transparent;
-    color:var(--muted);
-    font-size:17px;
-    padding:16px;
-    text-align:center;
-  }
-
   .screen{
     flex:1;
     display:flex;
     flex-direction:column;
-  }
-
-  .back-btn{
-    background:transparent;
-    color:var(--text);
-    font-size:17px;
-    padding:10px 4px;
-    align-self:flex-start;
-    margin-bottom:6px;
+    gap:14px;
   }
 
   .done-wrap{
@@ -249,8 +271,15 @@
     background:#000;
     margin-bottom:14px;
   }
-  .detail-meta{color:var(--muted);font-size:15px;margin-bottom:16px;text-align:center;}
-  .section-label{font-size:15px;color:var(--muted);margin:18px 0 8px;font-weight:600;}
+  .detail-meta{color:var(--muted);font-size:15px;text-align:center;}
+  .section-label{
+    font-size:13px;
+    color:var(--muted);
+    margin:0;
+    font-weight:700;
+    letter-spacing:0.04em;
+    text-transform:uppercase;
+  }
 
   /* ラベル読み取り結果ブロック（詳細画面） */
   .drink-info{
@@ -259,7 +288,7 @@
     padding:16px;
     margin-bottom:6px;
   }
-  .drink-info-name{font-size:19px;font-weight:700;margin:0 0 6px;}
+  .drink-info-name{font-size:20px;font-weight:700;margin:0 0 6px;}
   .drink-info-name.muted{color:var(--muted);font-weight:500;}
   .drink-info-sub{color:var(--muted);font-size:14px;margin:2px 0;}
   .drink-info-color-chip{
@@ -270,7 +299,6 @@
     font-size:13px;
     margin:8px 0 4px;
   }
-  .drink-info-importer{font-size:14px;color:var(--muted);margin:6px 0 0;}
   .drink-info-error{font-size:13px;color:var(--danger);margin:8px 0 0;}
   .drink-info-actions{margin-top:12px;display:flex;gap:16px;flex-wrap:wrap;}
   .drink-info-edit input[type=text]{
@@ -284,21 +312,6 @@
     margin-bottom:10px;
   }
   .drink-info-edit .chip{flex:0 0 auto;padding:10px 14px;}
-  .btn-danger{
-    width:100%;
-    min-height:64px;
-    font-size:18px;
-    font-weight:700;
-    border-radius:16px;
-    background:transparent;
-    border:2px solid var(--danger);
-    color:var(--danger);
-    margin-top:22px;
-  }
-  .btn-danger.confirming{
-    background:var(--danger);
-    color:#fff;
-  }
 
   /* オーバーレイシート（新しい店 / 設定） */
   .overlay{
@@ -326,9 +339,10 @@
     border:2px solid var(--accent-deep);
     background:var(--bg);
     color:var(--text);
-    margin-bottom:16px;
   }
-  .chip-row{display:flex;gap:10px;margin-bottom:20px;}
+  .newstore-sheet input[type=text]{margin-bottom:16px;}
+  .chip-row{display:flex;gap:10px;}
+  .newstore-sheet .chip-row{margin-bottom:20px;}
   .chip{
     flex:1;
     padding:14px;
@@ -344,16 +358,15 @@
     border-color:var(--accent);
     color:var(--text);
   }
-  .sheet-list{margin-bottom:10px;}
-  .sheet-row{
+  .sheet-section{
     display:flex;
-    justify-content:space-between;
-    align-items:center;
-    padding:16px 4px;
-    font-size:17px;
-    border-bottom:1px solid rgba(255,255,255,0.08);
+    flex-direction:column;
+    gap:10px;
+    margin-bottom:22px;
   }
-  .version-text{color:var(--muted);font-size:13px;text-align:center;margin-top:14px;}
+  .sheet-section:last-child{margin-bottom:0;}
+  #settingsOverlay .btn-secondary{min-height:56px;}
+  .version-text{color:var(--muted);font-size:13px;text-align:center;margin:0;}
   .settings-stamp-links a{color:var(--accent);text-decoration:none;}
 
   .toast{
@@ -388,12 +401,11 @@
   /* 好みプロフィールカード（ホーム） */
   .profile-card{
     background:var(--surface);
-    border-radius:18px;
+    border-radius:var(--r);
     padding:18px;
-    margin-top:16px;
   }
   .profile-card h3{margin:0 0 10px;font-size:18px;}
-  .profile-summary{font-size:15px;line-height:1.7;margin:0 0 14px;}
+  .profile-summary{font-size:15px;line-height:1.7;margin:0 0 10px;}
   .profile-label{font-size:13px;color:var(--muted);margin:12px 0 4px;font-weight:600;}
   .profile-quote{font-size:16px;font-weight:700;margin:0;}
   .profile-axis{font-size:15px;margin:2px 0;line-height:1.6;}
@@ -402,12 +414,6 @@
     display:flex;justify-content:space-between;align-items:center;
     margin-top:16px;
     color:var(--muted);font-size:13px;
-  }
-
-  .link-btn-sm{
-    font-size:15px;
-    padding:10px;
-    color:var(--muted);
   }
 
   /* 店の編集画面 */
@@ -444,48 +450,11 @@
     gap:8px;
     flex-wrap:wrap;
   }
-  .store-edit-chip{
-    padding:10px 12px;
-    min-height:44px;
-    font-size:14px;
-    border-radius:12px;
-    background:var(--bg);
-    color:var(--muted);
-    border:2px solid transparent;
-    white-space:nowrap;
-  }
   .store-edit-count{
     color:var(--muted);
     font-size:13px;
     min-width:40px;
     text-align:center;
-  }
-  .store-edit-delete{
-    background:transparent;
-    border:2px solid var(--danger);
-    color:var(--danger);
-    border-radius:12px;
-    padding:10px 12px;
-    min-height:44px;
-    font-size:14px;
-    white-space:nowrap;
-  }
-  .store-edit-delete.confirming{
-    background:var(--danger);
-    color:#fff;
-  }
-
-  /* 棚を撮るボタン（小さめ） */
-  .btn-shelf{
-    width:100%;
-    min-height:52px;
-    font-size:16px;
-    font-weight:600;
-    border-radius:14px;
-    background:transparent;
-    color:var(--muted);
-    border:2px solid var(--surface);
-    margin-bottom:14px;
   }
 
   /* 取り込み中の進捗バー */
@@ -634,22 +603,28 @@
     </header>
 
     <button class="btn-primary" id="btnCamera">📷 撮る</button>
-    <button class="btn-secondary" id="btnPicker" style="margin-bottom:14px;">🖼 カメラロールから選ぶ</button>
-    <button class="btn-shelf" id="btnShelf">🛒 棚を撮る（この中ならどれ？）</button>
-    <button class="btn-secondary" id="btnShelfHistory">🕘 前に見た棚</button>
+
+    <div class="grid2" id="homeSecondaryRow">
+      <button class="btn-secondary" id="btnPicker">🖼 写真から</button>
+      <button class="btn-secondary" id="btnShelf">🛒 棚を見る</button>
+    </div>
+    <button type="button" class="btn-text" id="btnShelfHistory">🕘 前に見た棚</button>
     <input type="file" id="fileCamera" accept="image/*" capture="environment" hidden>
     <input type="file" id="filePicker" accept="image/*" multiple hidden>
     <input type="file" id="shelfInput" accept="image/*" capture="environment" hidden>
 
-    <button class="btn-secondary" id="btnTriageBanner" hidden style="margin-bottom:14px;">📥 未整理が 0本 → 整理する</button>
+    <button type="button" class="btn-text full" id="statusLine" hidden></button>
 
-    <p class="section-label" style="margin-top:0;">最近飲んだの</p>
+    <div id="profileSection">
+      <button class="btn-secondary cta-profile" id="btnGenProfile" hidden>🍷 好みを言語化する</button>
+      <div class="profile-card" id="profileCard" hidden></div>
+    </div>
+
+    <div class="list-header" id="listHeader">
+      <p class="section-label" style="margin:0;">最近飲んだの</p>
+      <span class="list-count" id="countFooter"></span>
+    </div>
     <ul class="log-list" id="logList"></ul>
-    <p class="count-footer" id="countFooter"></p>
-    <button type="button" class="link-btn link-btn-sm" id="backupReminder" hidden>バックアップ、しばらくしてないよ → 設定から</button>
-    <p class="progress-line" id="progressLine"></p>
-    <button class="btn-primary" id="btnGenProfile" hidden style="margin-top:14px;">🍷 好みを言語化する</button>
-    <div class="profile-card" id="profileCard" hidden></div>
   </section>
 
   <!-- ============ RATE ============ -->
@@ -657,26 +632,26 @@
     <img class="photo-preview" id="ratePhoto" alt="撮った写真">
     <h2>どうだった？</h2>
     <div id="ratingButtons"></div>
-    <button class="link-btn" id="btnRateCancel">やめる</button>
+    <button type="button" class="btn-text full" id="btnRateCancel">やめる</button>
   </section>
 
   <!-- ============ STORE ============ -->
   <section id="store" class="screen" hidden>
     <h2>どこで買った？</h2>
     <div class="grid2" id="storeGrid"></div>
-    <div class="grid2" style="margin-top:12px;">
-      <button class="btn-store" id="btnStoreLater">⏭ あとで</button>
-      <button class="btn-store" id="btnStoreNew">➕ 新しい店</button>
+    <button type="button" class="btn-text full" id="btnStoreLater">⏭ あとで</button>
+    <div class="store-bottom-row">
+      <button type="button" class="btn-text" id="btnStoreNew">➕ 新しい店</button>
+      <button type="button" class="btn-text" id="btnStoreEditOpen">✏️ 店を編集</button>
     </div>
-    <button class="link-btn link-btn-sm" id="btnStoreEditOpen">✏️ 店を編集</button>
   </section>
 
   <!-- ============ STORES EDIT ============ -->
   <section id="stores" class="screen" hidden>
-    <button class="back-btn" id="btnStoresBack">← 戻る</button>
+    <button type="button" class="btn-text" id="btnStoresBack">← 戻る</button>
     <h2>店の編集</h2>
     <ul class="log-list" id="storesEditList"></ul>
-    <button class="btn-secondary" id="btnStoresNew" style="margin-top:12px;">➕ 新しい店</button>
+    <button class="btn-secondary" id="btnStoresNew">➕ 新しい店</button>
   </section>
 
   <!-- ============ IMPORTING（一括取り込み中） ============ -->
@@ -688,15 +663,15 @@
 
   <!-- ============ TRIAGE（未整理を整理する） ============ -->
   <section id="triage" class="screen" hidden>
-    <button class="back-btn" id="btnTriageBack">← 戻る</button>
+    <button type="button" class="btn-text" id="btnTriageBack">← 戻る</button>
     <h2 id="triageHeader">未整理 0本</h2>
-    <button class="btn-secondary" id="btnTriageAllGood" style="margin-bottom:14px;">全部うまいでOK</button>
+    <button class="btn-secondary" id="btnTriageAllGood">全部うまいでOK</button>
     <ul class="log-list" id="triageList"></ul>
   </section>
 
   <!-- ============ SHELF（棚モード） ============ -->
   <section id="shelf" class="screen" hidden>
-    <button class="back-btn" id="btnShelfBack">← 戻る</button>
+    <button type="button" class="btn-text" id="btnShelfBack">← 戻る</button>
     <img class="detail-photo" id="shelfPhoto" style="max-height:36vh;" alt="棚の写真">
     <p id="shelfMeta" class="detail-meta" aria-live="polite"></p>
     <div id="shelfLocation" hidden>
@@ -706,15 +681,15 @@
         <input id="shelfPlace" type="text" maxlength="120" placeholder="店名・場所（例：サミット ○○店）">
         <button class="btn-secondary" type="submit">場所を残す</button>
       </form>
-      <button class="link-btn" id="btnShelfPlaceSkip">今は入れない</button>
+      <button type="button" class="btn-text full" id="btnShelfPlaceSkip">今は入れない</button>
     </div>
-    <button class="link-btn" id="btnShelfPlaceEdit" hidden>場所を入れる・変える</button>
+    <button type="button" class="btn-text" id="btnShelfPlaceEdit" hidden>場所を入れる・変える</button>
     <div id="shelfBody"></div>
-    <button class="btn-secondary" id="btnShelfAgain" style="margin-top:14px;">📷 もう一枚</button>
+    <button class="btn-secondary" id="btnShelfAgain">📷 もう一枚</button>
   </section>
 
   <section id="shelfHistory" class="screen" hidden>
-    <button class="back-btn" id="btnShelfHistoryBack">← 戻る</button>
+    <button type="button" class="btn-text" id="btnShelfHistoryBack">← 戻る</button>
     <h2>前に見た棚</h2>
     <p class="detail-meta">あれ飲んでみよう、と思ったらここ。</p>
     <div id="shelfHistoryList"></div>
@@ -736,33 +711,33 @@
 
   <!-- ============ DETAIL ============ -->
   <section id="detail" class="screen" hidden>
-    <button class="back-btn" id="btnDetailBack">← 戻る</button>
+    <button type="button" class="btn-text" id="btnDetailBack">← 戻る</button>
     <img class="detail-photo" id="detailPhoto" alt="">
     <p class="detail-meta" id="detailMeta"></p>
     <div class="drink-info" id="drinkInfo"></div>
+    <p class="section-label">評価</p>
+    <div id="detailRatingButtons"></div>
+    <p class="section-label">お店</p>
+    <div class="grid2" id="detailStoreGrid"></div>
     <div class="stamp-wrap" id="detailStampWrap" hidden>
       <img class="stamp" id="detailStampImg" width="120" height="101" loading="lazy" decoding="async" alt="">
       <p class="stamp-cap">肴なら</p>
     </div>
-    <p class="section-label" style="margin-top:0;">評価</p>
-    <div id="detailRatingButtons"></div>
-    <p class="section-label">お店</p>
-    <div class="grid2" id="detailStoreGrid"></div>
-    <button class="btn-danger" id="btnDelete">🗑 消す</button>
+    <button type="button" class="btn-text danger" id="btnDelete">🗑 消す</button>
   </section>
 
 </div>
 
 <!-- 新しい店シート -->
 <div class="overlay" id="newStoreOverlay" hidden>
-  <div class="sheet">
+  <div class="sheet newstore-sheet">
     <h3>新しい店</h3>
     <input type="text" id="newStoreName" placeholder="店の名前" enterkeyhint="done">
     <div class="chip-row">
       <button class="chip selected" id="chipRetail">🏪 小売</button>
       <button class="chip" id="chipRestaurant">🍽 レストラン</button>
     </div>
-    <button class="btn-primary" id="btnSaveNewStore" style="margin-bottom:0;">これで保存</button>
+    <button class="btn-primary" id="btnSaveNewStore">これで保存</button>
   </div>
 </div>
 
@@ -770,30 +745,43 @@
 <div class="overlay" id="settingsOverlay" hidden>
   <div class="sheet">
     <h3>設定</h3>
-    <button class="btn-secondary" id="btnBackupExport" style="margin-bottom:6px;">💾 バックアップを書き出す</button>
-    <p class="detail-meta" style="text-align:left;margin:0 0 14px;" id="lastBackupLine"></p>
-    <p class="detail-meta" style="text-align:left;margin:0 0 8px;" id="backupRestoreNote" hidden>今あるデータは消えないよ。同じものは重複しないで足すだけ</p>
-    <button class="btn-secondary" id="btnBackupRestore" style="margin-bottom:20px;">📂 バックアップから復元</button>
-    <input type="file" id="backupRestoreInput" accept="application/json,.json" hidden>
-    <div class="sheet-list">
-      <button class="link-btn" style="text-align:left;padding:16px 4px;" id="btnStoresEditFromSettings">店を編集</button>
-      <button class="link-btn" style="text-align:left;padding:16px 4px;" id="btnTriageFromSettings">整理する</button>
-      <button class="link-btn" style="text-align:left;padding:16px 4px;" id="btnReadUnread">📖 未読のラベルをまとめて読み取る</button>
-      <button class="link-btn" style="text-align:left;padding:16px 4px;" id="btnExportJson">JSONを書き出す</button>
+
+    <div class="sheet-section">
+      <p class="section-label" style="margin:0;">データ</p>
+      <button class="btn-secondary" id="btnBackupExport">💾 バックアップを書き出す</button>
+      <p class="detail-meta" style="text-align:left;margin:0;" id="lastBackupLine"></p>
+      <p class="detail-meta" style="text-align:left;margin:0;" id="backupRestoreNote" hidden>今あるデータは消えないよ。同じものは重複しないで足すだけ</p>
+      <button class="btn-secondary" id="btnBackupRestore">📂 バックアップから復元</button>
+      <input type="file" id="backupRestoreInput" accept="application/json,.json" hidden>
+      <button class="btn-secondary" id="btnExportJson">JSONを書き出す</button>
     </div>
-    <p class="section-label" style="margin-top:4px;">Gemini APIキー</p>
-    <input type="password" id="geminiKeyInput" autocomplete="off" placeholder="APIキーを貼り付け">
-    <div class="grid2" style="margin-bottom:8px;">
-      <button class="btn-secondary" id="btnSaveGeminiKey">保存</button>
-      <button class="btn-secondary" id="btnClearGeminiKey" hidden>消す</button>
+
+    <div class="sheet-section">
+      <p class="section-label" style="margin:0;">ラベル読み取り</p>
+      <input type="password" id="geminiKeyInput" autocomplete="off" placeholder="APIキーを貼り付け">
+      <div class="grid2">
+        <button class="btn-secondary" id="btnSaveGeminiKey">保存</button>
+        <button class="btn-secondary" id="btnClearGeminiKey" hidden>消す</button>
+      </div>
+      <p class="detail-meta" style="text-align:left;margin:0;" id="geminiKeyStatus"></p>
+      <p class="detail-meta" style="text-align:left;margin:0;">キーはこの端末の中にだけ保存されるよ</p>
+      <button class="btn-secondary" id="btnReadUnread">📖 未読のラベルをまとめて読み取る</button>
     </div>
-    <p class="detail-meta" style="text-align:left;margin-bottom:4px;" id="geminiKeyStatus"></p>
-    <p class="detail-meta" style="text-align:left;">キーはこの端末の中にだけ保存されるよ</p>
-    <p class="detail-meta settings-stamp-links" style="text-align:left;margin-top:16px;">肴のスタンプは Kei の LINEスタンプ「酒と肴」<br>
-      <a href="https://line.me/S/sticker/36507457" target="_blank" rel="noopener">白ワイン編</a> ・
-      <a href="https://line.me/S/sticker/36509466" target="_blank" rel="noopener">赤ワイン編</a>
-    </p>
-    <p class="version-text">v0.6</p>
+
+    <div class="sheet-section">
+      <p class="section-label" style="margin:0;">整理</p>
+      <button class="btn-secondary" id="btnStoresEditFromSettings">店を編集</button>
+      <button class="btn-secondary" id="btnTriageFromSettings">整理する</button>
+    </div>
+
+    <div class="sheet-section">
+      <p class="section-label" style="margin:0;">このアプリ</p>
+      <p class="detail-meta settings-stamp-links" style="text-align:left;margin:0;">肴のスタンプは Kei の LINEスタンプ「酒と肴」<br>
+        <a href="https://line.me/S/sticker/36507457" target="_blank" rel="noopener">白ワイン編</a> ・
+        <a href="https://line.me/S/sticker/36509466" target="_blank" rel="noopener">赤ワイン編</a>
+      </p>
+      <p class="version-text">v0.7</p>
+    </div>
   </div>
 </div>
 
@@ -1209,7 +1197,7 @@ async function renderStoreScreen(){
   grid.innerHTML = '';
   top.forEach((s) => {
     const btn = document.createElement('button');
-    btn.className = 'btn-store';
+    btn.className = 'btn-secondary';
     btn.textContent = s.name;
     btn.addEventListener('click', () => finalizeSave(s.id));
     grid.appendChild(btn);
@@ -1796,7 +1784,8 @@ async function renderStoresEdit(){
     actions.className = 'store-edit-actions';
 
     const chipBtn = document.createElement('button');
-    chipBtn.className = 'store-edit-chip';
+    chipBtn.type = 'button';
+    chipBtn.className = 'btn-text';
     chipBtn.textContent = s.type === 'restaurant' ? '🍽 レストラン' : '🏪 小売';
     chipBtn.addEventListener('click', async () => {
       s.type = s.type === 'restaurant' ? 'retail' : 'restaurant';
@@ -1810,7 +1799,8 @@ async function renderStoresEdit(){
     countSpan.textContent = `${countMap.get(s.id) || 0}回`;
 
     const delBtn = document.createElement('button');
-    delBtn.className = 'store-edit-delete';
+    delBtn.type = 'button';
+    delBtn.className = 'btn-text danger';
     delBtn.textContent = '消す';
     let armed = false;
     let armTimer = null;
@@ -1904,7 +1894,17 @@ async function renderHome(){
   const list = document.getElementById('logList');
   list.innerHTML = '';
 
-  if (logs.length === 0){
+  const isEmpty = logs.length === 0;
+  document.getElementById('homeSecondaryRow').hidden = isEmpty;
+  document.getElementById('btnShelfHistory').hidden = isEmpty;
+  document.getElementById('listHeader').hidden = isEmpty;
+  document.getElementById('profileSection').hidden = isEmpty;
+
+  if (isEmpty){
+    const statusEl = document.getElementById('statusLine');
+    statusEl.hidden = true;
+    statusEl.onclick = null;
+
     const li = document.createElement('li');
     li.className = 'empty-state';
     li.innerHTML = `
@@ -1918,52 +1918,85 @@ async function renderHome(){
     if (obBtn){
       obBtn.addEventListener('click', () => document.getElementById('filePicker').click());
     }
-  } else {
-    logs.forEach((log) => {
-      const drink = drinkMap.get(log.drinkId);
-      if (!drink) return;
-      const store = log.storeId ? storeMap.get(log.storeId) : null;
-      const info = ratingInfo(log.rating);
-
-      const li = document.createElement('li');
-      const btn = document.createElement('button');
-      btn.className = 'log-row';
-
-      const thumbUrl = URL.createObjectURL(drink.thumb);
-      homeThumbUrls.push(thumbUrl);
-
-      const nameLine = drink.name
-        ? `<span class="log-name">${escapeHtml(drink.name)}</span>`
-        : `<span class="log-name muted">名前 まだ</span>`;
-      const storeName = store ? escapeHtml(store.name) : '店：あとで';
-      const provisionalTag = log.provisional ? ' <span class="tag-provisional">仮</span>' : '';
-
-      btn.innerHTML = `
-        <img class="log-thumb" src="${thumbUrl}" alt="">
-        <span class="log-info">
-          ${nameLine}
-          <span class="log-sub">${info.emoji} ${info.label}${provisionalTag} · ${storeName} · ${fmtDate(log.drankAt)}</span>
-        </span>
-      `;
-      btn.addEventListener('click', () => openDetail(log.id));
-      li.appendChild(btn);
-      list.appendChild(li);
-    });
+    return;
   }
 
-  document.getElementById('countFooter').textContent = `これまで ${logs.length} 本`;
-  updateBackupReminder(logs.length);
+  logs.forEach((log) => {
+    const drink = drinkMap.get(log.drinkId);
+    if (!drink) return;
+    const store = log.storeId ? storeMap.get(log.storeId) : null;
+    const info = ratingInfo(log.rating);
+
+    const li = document.createElement('li');
+    const btn = document.createElement('button');
+    btn.className = 'log-row';
+
+    const thumbUrl = URL.createObjectURL(drink.thumb);
+    homeThumbUrls.push(thumbUrl);
+
+    const nameLine = drink.name
+      ? `<span class="log-name">${escapeHtml(drink.name)}</span>`
+      : `<span class="log-name muted">名前 まだ</span>`;
+    const storeName = store ? escapeHtml(store.name) : '店：あとで';
+    const provisionalTag = log.provisional ? ' <span class="tag-provisional">仮</span>' : '';
+
+    btn.innerHTML = `
+      <img class="log-thumb" src="${thumbUrl}" alt="">
+      <span class="log-info">
+        ${nameLine}
+        <span class="log-sub">${info.emoji} ${info.label}${provisionalTag} · ${storeName} · ${fmtDate(log.drankAt)}</span>
+      </span>
+    `;
+    btn.addEventListener('click', () => openDetail(log.id));
+    li.appendChild(btn);
+    list.appendChild(li);
+  });
+
+  document.getElementById('countFooter').textContent = `${logs.length}本`;
 
   const provisionalCount = logs.filter((l) => l.provisional).length;
-  const bannerBtn = document.getElementById('btnTriageBanner');
-  if (provisionalCount > 0){
-    bannerBtn.textContent = `📥 未整理が ${provisionalCount}本 → 整理する`;
-    bannerBtn.hidden = false;
-  } else {
-    bannerBtn.hidden = true;
-  }
+  const drinkIdsWithLog = new Set(logs.map((l) => l.drinkId));
+  const readCount = drinksArr.filter((d) => d.name != null && drinkIdsWithLog.has(d.id)).length;
 
-  await updateHomeProgressAndProfile(logs, drinksArr);
+  updateStatusLine(logs, provisionalCount, readCount);
+  await updateProfileSection(readCount);
+}
+
+/* =========================================================
+   ホームのステータス行（優先度順に1つだけ表示）
+   (a)未整理 > (b)Geminiキー未設定 > (c)言語化まであと何本 > (d)バックアップ催促
+========================================================= */
+function updateStatusLine(logs, provisionalCount, readCount){
+  const el = document.getElementById('statusLine');
+  el.onclick = null;
+
+  if (provisionalCount > 0){
+    el.textContent = `未整理 ${provisionalCount}本 → 整理する`;
+    el.hidden = false;
+    el.onclick = openTriage;
+    return;
+  }
+  if (!getGeminiKey() && logs.length >= 1){
+    el.textContent = 'Geminiキーを入れよう → 設定';
+    el.hidden = false;
+    el.onclick = openSettingsSheet;
+    return;
+  }
+  if (readCount < PROFILE_MIN){
+    el.textContent = `言語化まで あと ${PROFILE_MIN - readCount}本（ラベル読み取り済み ${readCount}本）`;
+    el.hidden = false;
+    return;
+  }
+  const FOURTEEN_DAYS = 14 * 24 * 60 * 60 * 1000;
+  const lastAt = getLastBackupAt();
+  const stale = !lastAt || (Date.now() - lastAt > FOURTEEN_DAYS);
+  if (logs.length >= 5 && stale){
+    el.textContent = 'バックアップ、しばらくしてないよ → 設定から';
+    el.hidden = false;
+    el.onclick = openSettingsSheet;
+    return;
+  }
+  el.hidden = true;
 }
 
 /* =========================================================
@@ -1971,25 +2004,16 @@ async function renderHome(){
 ========================================================= */
 const PROFILE_MIN = 5; // これ以上ラベルが読めたら「好みを言語化する」を出す
 
-async function updateHomeProgressAndProfile(logs, drinksArr){
-  const drinkIdsWithLog = new Set(logs.map((l) => l.drinkId));
-  const readCount = drinksArr.filter((d) => d.name != null && drinkIdsWithLog.has(d.id)).length;
-
-  const progressEl = document.getElementById('progressLine');
+async function updateProfileSection(readCount){
   const genBtn = document.getElementById('btnGenProfile');
   const cardWrap = document.getElementById('profileCard');
 
   if (readCount < PROFILE_MIN){
-    let msg = `言語化まで ラベル読み取り済み ${readCount}/${PROFILE_MIN} 本`;
-    if (!getGeminiKey()) msg += '（設定でGeminiキーを入れてね）';
-    progressEl.textContent = msg;
-    progressEl.hidden = false;
     genBtn.hidden = true;
     cardWrap.hidden = true;
     return;
   }
 
-  progressEl.hidden = true;
   const profile = await dbGet('profile', 'me');
   if (!profile){
     genBtn.hidden = false;
@@ -2001,24 +2025,39 @@ async function updateHomeProgressAndProfile(logs, drinksArr){
   }
 }
 
+function getProfileOpen(){
+  try { return localStorage.getItem('sakelog.profileOpen') === '1'; } catch (e) { return false; }
+}
+function setProfileOpen(open){
+  try { localStorage.setItem('sakelog.profileOpen', open ? '1' : '0'); } catch (e) { /* 無視 */ }
+}
+
 function renderProfileCard(profile){
   const wrap = document.getElementById('profileCard');
   const dateStr = profile.generatedAt ? fmtDate(profile.generatedAt) : '';
+  const open = getProfileOpen();
   wrap.innerHTML = `
     <h3>あなたの好み</h3>
     <p class="profile-summary">${escapeHtml(profile.summary || '')}</p>
-    <p class="profile-label">お店で言うなら</p>
-    <p class="profile-quote">「${escapeHtml(profile.sommelier || '')}」</p>
-    <p class="profile-label">間違いない選択軸</p>
-    <p class="profile-axis">${escapeHtml(profile.axis1 || '')}</p>
-    <p class="profile-axis">${escapeHtml(profile.axis2 || '')}</p>
-    <p class="profile-label">たまには</p>
-    <p class="profile-adventure">${escapeHtml(profile.adventure || '')}</p>
-    <div class="profile-footer">
-      <span>${profile.basedOn || 0}本から · ${dateStr}</span>
-      <button class="link-btn-sm" id="btnRegenProfile">🔄 更新</button>
+    <button type="button" class="btn-text" id="btnToggleProfile" style="padding-left:0;">${open ? '閉じる ▴' : '詳しく ▾'}</button>
+    <div id="profileDetail" ${open ? '' : 'hidden'}>
+      <p class="profile-label">お店で言うなら</p>
+      <p class="profile-quote">「${escapeHtml(profile.sommelier || '')}」</p>
+      <p class="profile-label">間違いない選択軸</p>
+      <p class="profile-axis">${escapeHtml(profile.axis1 || '')}</p>
+      <p class="profile-axis">${escapeHtml(profile.axis2 || '')}</p>
+      <p class="profile-label">たまには</p>
+      <p class="profile-adventure">${escapeHtml(profile.adventure || '')}</p>
+      <div class="profile-footer">
+        <span>${profile.basedOn || 0}本から · ${dateStr}</span>
+        <button type="button" class="btn-text" id="btnRegenProfile">🔄 更新</button>
+      </div>
     </div>
   `;
+  document.getElementById('btnToggleProfile').addEventListener('click', () => {
+    setProfileOpen(!getProfileOpen());
+    renderProfileCard(profile);
+  });
   document.getElementById('btnRegenProfile').addEventListener('click', generateProfile);
 }
 
@@ -2235,7 +2274,14 @@ function renderDrinkInfo(drink){
   const producerCountry = [drink.producer, [drink.country, drink.region].filter(Boolean).join(' ')].filter(Boolean).join(' · ');
   const grapeVintage = [drink.grape, drink.vintage].filter(Boolean).join(' · ');
   const colorChip = drink.color ? `<span class="drink-info-color-chip">${colorLabel(drink.color)}</span>` : '';
-  const importerLine = drink.importer ? `<p class="drink-info-importer">輸入元: ${escapeHtml(drink.importer)}</p>` : '';
+  const importerText = drink.importer ? `輸入元: ${escapeHtml(drink.importer)}` : '';
+  const thirdLine = (grapeVintage || colorChip || importerText)
+    ? `<p class="drink-info-sub" style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;">
+        ${grapeVintage ? `<span>${escapeHtml(grapeVintage)}</span>` : ''}
+        ${colorChip}
+        ${importerText ? `<span>${importerText}</span>` : ''}
+      </p>`
+    : '';
   const errorLine = drink.readError ? `<p class="drink-info-error">前回読み取り失敗（${escapeHtml(geminiErrorMessage(drink.readError) || drink.readError)}）</p>` : '';
 
   updateDetailStamp(drink);
@@ -2243,12 +2289,10 @@ function renderDrinkInfo(drink){
   wrap.innerHTML = `
     ${nameLine}
     ${producerCountry ? `<p class="drink-info-sub">${escapeHtml(producerCountry)}</p>` : ''}
-    ${grapeVintage ? `<p class="drink-info-sub">${escapeHtml(grapeVintage)}</p>` : ''}
-    ${colorChip}
-    ${importerLine}
+    ${thirdLine}
     <div class="drink-info-actions">
-      <button class="link-btn-sm" id="btnEditDrink">✏️ 直す</button>
-      <button class="link-btn-sm" id="btnRereadLabel">🔁 ラベルを読み直す</button>
+      <button type="button" class="btn-text" id="btnEditDrink">✏️ 直す</button>
+      <button type="button" class="btn-text" id="btnRereadLabel">🔁 ラベルを読み直す</button>
     </div>
     ${errorLine}
   `;
@@ -2306,7 +2350,7 @@ async function renderDetail(){
   sGrid.innerHTML = '';
 
   const laterBtn = document.createElement('button');
-  laterBtn.className = 'btn-store' + (!log.storeId ? ' active' : '');
+  laterBtn.className = 'btn-secondary' + (!log.storeId ? ' active' : '');
   laterBtn.textContent = '⏭ あとで';
   laterBtn.addEventListener('click', async () => {
     if (!log.storeId) return;
@@ -2319,7 +2363,7 @@ async function renderDetail(){
 
   top.forEach((s) => {
     const btn = document.createElement('button');
-    btn.className = 'btn-store' + (log.storeId === s.id ? ' active' : '');
+    btn.className = 'btn-secondary' + (log.storeId === s.id ? ' active' : '');
     btn.textContent = s.name;
     btn.addEventListener('click', async () => {
       if (log.storeId === s.id) return;
@@ -2417,7 +2461,7 @@ async function showShelfLocation(entry, expanded){
   ].filter(Boolean))].slice(0, 3);
   names.forEach(name => {
     const button = document.createElement('button');
-    button.className = 'btn-store';
+    button.className = 'btn-secondary';
     button.textContent = name;
     button.onclick = () => saveShelfPlace(name);
     choices.appendChild(button);
@@ -2837,16 +2881,6 @@ async function renderBackupUI(){
   }
 }
 
-// ホーム下部の「そろそろバックアップしたら」リマインダー
-function updateBackupReminder(logsCount){
-  const el = document.getElementById('backupReminder');
-  if (!el) return;
-  const FOURTEEN_DAYS = 14 * 24 * 60 * 60 * 1000;
-  const lastAt = getLastBackupAt();
-  const stale = !lastAt || (Date.now() - lastAt > FOURTEEN_DAYS);
-  el.hidden = !(logsCount >= 5 && stale);
-}
-
 function openSettingsSheet(){
   renderGeminiKeyUI();
   renderBackupUI();
@@ -2898,7 +2932,7 @@ async function handleBackupExport(){
     const mb = (blob.size / (1024 * 1024)).toFixed(1);
     toast(`書き出したよ（${backup.counts.drinks}本・${mb}MB）`);
     renderLastBackupLine();
-    updateBackupReminder((await dbGetAll('logs')).length);
+    if (!document.getElementById('home').hidden) renderHome();
   } catch (err) {
     toast('書き出せなかった');
   } finally {
@@ -3006,7 +3040,6 @@ function init(){
 
   document.getElementById('btnTriageBack').addEventListener('click', closeTriage);
   document.getElementById('btnTriageAllGood').addEventListener('click', handleTriageAllGood);
-  document.getElementById('btnTriageBanner').addEventListener('click', openTriage);
   document.getElementById('btnTriageFromSettings').addEventListener('click', () => {
     document.getElementById('settingsOverlay').hidden = true;
     openTriage();
@@ -3046,7 +3079,6 @@ function init(){
   document.getElementById('btnDelete').addEventListener('click', handleDeleteClick);
 
   document.getElementById('btnSettings').addEventListener('click', openSettingsSheet);
-  document.getElementById('backupReminder').addEventListener('click', openSettingsSheet);
   document.getElementById('btnBackupExport').addEventListener('click', handleBackupExport);
   document.getElementById('btnBackupRestore').addEventListener('click', () => {
     document.getElementById('backupRestoreInput').click();
