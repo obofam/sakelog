@@ -336,11 +336,9 @@
     padding:24px calc(env(safe-area-inset-left) + 20px) calc(env(safe-area-inset-bottom) + 24px) calc(env(safe-area-inset-right) + 20px);
   }
   .sheet h3{margin:0 0 16px;font-size:20px;}
-  .sheet-head{position:sticky;top:-24px;margin:-24px -20px 16px;padding:16px 20px 12px;background:var(--surface);display:flex;align-items:center;justify-content:space-between;z-index:1;}
-  .sheet-head h3{margin:0;}
-  body.sheet-open{position:fixed;left:0;right:0;width:100%;overflow:hidden;}
   .sheet{touch-action:pan-y;}
-  .sheet input[type=text], .sheet input[type=password]{
+  .sheet input[type=text], .sheet input[type=password],
+  #settings input[type=text], #settings input[type=password]{
     width:100%;
     font-size:19px;
     padding:16px;
@@ -374,7 +372,7 @@
     margin-bottom:22px;
   }
   .sheet-section:last-child{margin-bottom:0;}
-  #settingsOverlay .btn-secondary{min-height:56px;}
+  #settings .btn-secondary{min-height:56px;}
   .version-text{color:var(--muted);font-size:13px;text-align:center;margin:0;}
   .settings-stamp-links a{color:var(--accent);text-decoration:none;}
 
@@ -735,25 +733,10 @@
     <button type="button" class="btn-text danger" id="btnDelete">🗑 消す</button>
   </section>
 
-</div>
-
-<!-- 新しい店シート -->
-<div class="overlay" id="newStoreOverlay" hidden>
-  <div class="sheet newstore-sheet">
-    <h3>新しい店</h3>
-    <input type="text" id="newStoreName" placeholder="店の名前" enterkeyhint="done">
-    <div class="chip-row">
-      <button class="chip selected" id="chipRetail">🏪 小売</button>
-      <button class="chip" id="chipRestaurant">🍽 レストラン</button>
-    </div>
-    <button class="btn-primary" id="btnSaveNewStore">これで保存</button>
-  </div>
-</div>
-
-<!-- 設定シート -->
-<div class="overlay" id="settingsOverlay" hidden>
-  <div class="sheet">
-    <div class="sheet-head"><h3>設定</h3><button class="btn-text" id="btnCloseSettings" type="button">閉じる ✕</button></div>
+  <!-- ============ SETTINGS ============ -->
+  <section id="settings" class="screen" hidden>
+    <button type="button" class="btn-text" id="btnSettingsBack">← 戻る</button>
+    <h2>設定</h2>
 
     <div class="sheet-section">
       <p class="section-label" style="margin:0;">データ</p>
@@ -789,8 +772,22 @@
         <a href="https://line.me/S/sticker/36507457" target="_blank" rel="noopener">白ワイン編</a> ・
         <a href="https://line.me/S/sticker/36509466" target="_blank" rel="noopener">赤ワイン編</a>
       </p>
-      <p class="version-text">v0.7</p>
+      <p class="version-text">v0.8</p>
     </div>
+  </section>
+
+</div>
+
+<!-- 新しい店シート -->
+<div class="overlay" id="newStoreOverlay" hidden>
+  <div class="sheet newstore-sheet">
+    <h3>新しい店</h3>
+    <input type="text" id="newStoreName" placeholder="店の名前" enterkeyhint="done">
+    <div class="chip-row">
+      <button class="chip selected" id="chipRetail">🏪 小売</button>
+      <button class="chip" id="chipRestaurant">🍽 レストラン</button>
+    </div>
+    <button class="btn-primary" id="btnSaveNewStore">これで保存</button>
   </div>
 </div>
 
@@ -1072,7 +1069,7 @@ function geminiErrorMessage(errType){
 /* =========================================================
    画面切り替え
 ========================================================= */
-const screens = ['home', 'rate', 'store', 'done', 'detail', 'stores', 'importing', 'triage', 'shelf', 'shelfHistory'];
+const screens = ['home', 'rate', 'store', 'done', 'detail', 'stores', 'importing', 'triage', 'shelf', 'shelfHistory', 'settings'];
 function showScreen(id){
   screens.forEach((s) => {
     document.getElementById(s).hidden = (s !== id);
@@ -2893,26 +2890,12 @@ async function renderBackupUI(){
 function openSettingsSheet(){
   renderGeminiKeyUI();
   renderBackupUI();
-  const ov = document.getElementById('settingsOverlay');
-  ov.hidden = false;
-  ov.querySelector('.sheet').scrollTop = 0;
-  lockBodyScroll();
+  showScreen('settings');
+  window.scrollTo(0, 0);
 }
 function closeSettingsSheet(){
-  document.getElementById('settingsOverlay').hidden = true;
-  unlockBodyScroll();
-}
-// iOS Safari は body の overflow:hidden を無視するので position:fixed で止める
-let savedScrollY = 0;
-function lockBodyScroll(){
-  savedScrollY = window.scrollY || 0;
-  document.body.style.top = `-${savedScrollY}px`;
-  document.body.classList.add('sheet-open');
-}
-function unlockBodyScroll(){
-  document.body.classList.remove('sheet-open');
-  document.body.style.top = '';
-  window.scrollTo(0, savedScrollY);
+  showScreen('home');
+  renderHome();
 }
 
 async function handleBackupExport(){
@@ -3069,7 +3052,6 @@ function init(){
   document.getElementById('btnTriageBack').addEventListener('click', closeTriage);
   document.getElementById('btnTriageAllGood').addEventListener('click', handleTriageAllGood);
   document.getElementById('btnTriageFromSettings').addEventListener('click', () => {
-    closeSettingsSheet();
     openTriage();
   });
 
@@ -3107,7 +3089,7 @@ function init(){
   document.getElementById('btnDelete').addEventListener('click', handleDeleteClick);
 
   document.getElementById('btnSettings').addEventListener('click', openSettingsSheet);
-  document.getElementById('btnCloseSettings').addEventListener('click', closeSettingsSheet);
+  document.getElementById('btnSettingsBack').addEventListener('click', closeSettingsSheet);
   document.getElementById('btnBackupExport').addEventListener('click', handleBackupExport);
   document.getElementById('btnBackupRestore').addEventListener('click', () => {
     document.getElementById('backupRestoreInput').click();
@@ -3117,17 +3099,11 @@ function init(){
     e.target.value = '';
     if (file) handleBackupRestoreFile(file);
   });
-  document.getElementById('settingsOverlay').addEventListener('click', (e) => {
-    if (e.target.id === 'settingsOverlay'){
-      closeSettingsSheet();
-    }
-  });
   document.getElementById('btnExportJson').addEventListener('click', async () => {
     const json = await exportJSON();
     downloadJSON(json);
   });
   document.getElementById('btnStoresEditFromSettings').addEventListener('click', () => {
-    closeSettingsSheet();
     openStoresEdit('home');
   });
   document.getElementById('btnReadUnread').addEventListener('click', readUnreadLabelsBatch);
