@@ -822,7 +822,7 @@
         <a href="https://line.me/S/sticker/36507457" target="_blank" rel="noopener">白ワイン編</a> ・
         <a href="https://line.me/S/sticker/36509466" target="_blank" rel="noopener">赤ワイン編</a>
       </p>
-      <p class="version-text">v0.12</p>
+      <p class="version-text">v0.13</p>
     </div>
   </section>
 
@@ -1184,7 +1184,7 @@ async function callGemini(parts, kind){
   throw { type: 'nokey' };
 }
 
-async function callGeminiDirect(parts, key){
+async function callGeminiDirect(parts, key, _retried){
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(key)}`;
   const body = {
     contents: [{ parts }],
@@ -1200,6 +1200,12 @@ async function callGeminiDirect(parts, key){
   } catch (e) {
     throw { type: 'network' };
   }
+  if ((res.status === 503 || res.status === 429) && !_retried){
+    _retried = true;
+    await new Promise((r) => setTimeout(r, 2000));
+    return callGeminiDirect(parts, key, true);
+  }
+  if (res.status === 503 || res.status === 429) throw { type: 'busy' };
   if (res.status === 401 || res.status === 403) throw { type: 'auth' };
   if (!res.ok) throw { type: 'other', status: res.status };
   return extractGeminiJson(res);
@@ -1225,10 +1231,16 @@ async function callGeminiRelay(parts, kind){
   }
   const remainingHeader = res.headers.get('X-Trial-Remaining');
   if (remainingHeader != null) setTrialRemaining(parseInt(remainingHeader, 10));
-  if (res.status === 429) throw { type: 'trial_exhausted' };
-  if (res.status === 403) throw { type: 'trial_disabled' };
-  if (res.status === 503) throw { type: 'daily_cap' };
-  if (!res.ok) throw { type: 'other', status: res.status };
+  if (!res.ok){
+    let code = null;
+    try { const j = await res.clone().json(); code = j && (j.error && typeof j.error === 'string' ? j.error : (j.error && j.error.status)); } catch (e) { /* 本文なし */ }
+    if (code === 'trial_exhausted') throw { type: 'trial_exhausted' };
+    if (code === 'trial_disabled') throw { type: 'trial_disabled' };
+    if (code === 'daily_cap') throw { type: 'daily_cap' };
+    if (code === 'upstream_busy' || code === 'UNAVAILABLE' || res.status === 503 || res.status === 429) throw { type: 'busy' };
+    if (res.status === 401 || res.status === 403) throw { type: 'auth' };
+    throw { type: 'other', status: res.status };
+  }
   return extractGeminiJson(res);
 }
 
@@ -1283,6 +1295,7 @@ function geminiErrorMessage(errType){
   if (errType === 'trial_exhausted') return 'お試し枠が終わったよ。自分のキーを入れると続けられる（設定 → 取り方）';
   if (errType === 'trial_disabled') return 'お試しは今お休み中。自分のキーを入れてね';
   if (errType === 'daily_cap') return '今日はみんなの分が上限。明日また試してね';
+  if (errType === 'busy') return 'Google側が混んでるみたい。少し待ってもう一回';
   return '読めなかった';
 }
 
@@ -3044,7 +3057,9 @@ async function handleShelfPhoto(file){
   } catch (err) {
     if (token !== shelfViewToken) return;
     if (!saved) document.getElementById('shelfMeta').textContent = '写真を保存できませんでした';
-    renderShelfError(saved ? '写真は残したよ。提案を取得・保存できなかった。' : '写真を保存できなかった。もう一度試してね。');
+    console.error('shelf error', err);
+    const why = (err && err.type) ? geminiErrorMessage(err.type) : ((err && err.message) ? err.message : '原因不明');
+    renderShelfError(saved ? `写真は残したよ。お告げが出せなかった（${why}）` : '写真を保存できなかった。もう一度試してね。');
   }
 }
 
