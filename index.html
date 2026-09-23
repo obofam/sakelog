@@ -192,6 +192,18 @@
     background:#000;
   }
   .log-thumb.muted{opacity:0.6;}
+  .photo-placeholder{
+    display:block;
+    color:var(--muted);
+    font-size:13px;
+    text-align:center;
+    line-height:1.4;
+  }
+  .photo-placeholder.small{
+    width:64px;
+    font-size:10px;
+    flex-shrink:0;
+  }
   .log-info{flex:1;min-width:0;}
   .log-rating{font-size:16px;font-weight:700;}
   .log-store{color:var(--muted);font-size:14px;margin-top:2px;}
@@ -810,7 +822,7 @@
         <a href="https://line.me/S/sticker/36507457" target="_blank" rel="noopener">白ワイン編</a> ・
         <a href="https://line.me/S/sticker/36509466" target="_blank" rel="noopener">赤ワイン編</a>
       </p>
-      <p class="version-text">v0.11</p>
+      <p class="version-text">v0.12</p>
     </div>
   </section>
 
@@ -953,6 +965,52 @@ function dbGetAll(storeName){
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
   }));
+}
+
+/* =========================================================
+   写真Blobの保存形式ヘルパー
+   iOS Safari（PWA・standalone）はIndexedDBに入れたBlobが後で読めなくなることがある
+   既知の不具合があるため、ArrayBufferとして保存する（{buf, type}）。
+   古いレコードに残っているBlobも toBlob でそのまま読める（後方互換）。
+========================================================= */
+async function toStored(blob){
+  if (blob == null) return null;
+  if (blob instanceof Blob){
+    return { buf: await blob.arrayBuffer(), type: blob.type || 'image/jpeg' };
+  }
+  if (blob.buf) return blob; // 既にストア形式
+  return null;
+}
+function toBlob(stored){
+  if (stored == null) return null;
+  if (stored instanceof Blob) return stored;
+  if (stored instanceof ArrayBuffer) return new Blob([stored], { type: 'image/jpeg' });
+  if (stored.buf) return new Blob([stored.buf], { type: stored.type || 'image/jpeg' });
+  return null;
+}
+// drinks/shelves レコードから写真Blobを取り出す共通アクセサ（保存形式・旧Blob形式どちらでも読める）
+function drinkPhoto(d){ return d ? toBlob(d.photo) : null; }
+function drinkThumb(d){ return d ? toBlob(d.thumb) : null; }
+function shelfEntryPhoto(e){ return e ? toBlob(e.photo) : null; }
+
+/* =========================================================
+   写真の読み込み失敗フォールバック（IndexedDBのBlobが読めなくなった場合など）
+========================================================= */
+function photoLoadError(imgEl){
+  if (!imgEl || imgEl.dataset.phFallback === '1') return;
+  imgEl.dataset.phFallback = '1';
+  imgEl.style.display = 'none';
+  const ph = document.createElement('span');
+  ph.className = 'photo-placeholder' + (imgEl.dataset.phSmall ? ' small' : '');
+  ph.textContent = '写真を読み込めなかった';
+  imgEl.insertAdjacentElement('afterend', ph);
+}
+function resetPhotoFallback(imgEl){
+  if (!imgEl) return;
+  delete imgEl.dataset.phFallback;
+  imgEl.style.display = '';
+  const next = imgEl.nextElementSibling;
+  if (next && next.classList.contains('photo-placeholder')) next.remove();
 }
 
 function uuid(){
@@ -1386,6 +1444,7 @@ async function finalizeSave(storeId){
   setStoreButtonsDisabled(true);
 
   const drinkId = uuid();
+  const [storedPhoto, storedThumb] = await Promise.all([toStored(pending.photo), toStored(pending.thumb)]);
   const drink = {
     id: drinkId,
     kind: 'wine',  // 基本はワイン。日本酒・ビール等は将来ここを切り替える（ラベル読み取りで上書きされる）
@@ -1404,8 +1463,8 @@ async function finalizeSave(storeId){
     readError: null,
     excluded: false,
     subject: null,
-    photo: pending.photo,
-    thumb: pending.thumb,
+    photo: storedPhoto,
+    thumb: storedThumb,
     createdAt: Date.now()
   };
   const log = {
@@ -1457,7 +1516,9 @@ function setStoreButtonsDisabled(disabled){
 // drink オブジェクトにGeminiの読み取り結果を書き込んで保存する共通処理
 async function fetchLabelForDrink(drink){
   try {
-    const result = await callGeminiVision(drink.photo);
+    const photoBlob = drinkPhoto(drink);
+    if (!photoBlob) throw { type: 'other' };
+    const result = await callGeminiVision(photoBlob);
     const isDrink = result.is_drink !== false; // 判断に迷ったらtrue扱い（undefinedも許容）
     if (!isDrink){
       drink.kind = 'not_drink';
@@ -1633,6 +1694,7 @@ async function startBulkImport(files, onboarding){
         continue;
       }
       const { photo, thumb } = await preparePhoto(file);
+      const [storedPhoto, storedThumb] = await Promise.all([toStored(photo), toStored(thumb)]);
       const drinkId = uuid();
       const drink = {
         id: drinkId,
@@ -1653,8 +1715,8 @@ async function startBulkImport(files, onboarding){
         excluded: false,
         subject: null,
         importKey,
-        photo,
-        thumb,
+        photo: storedPhoto,
+        thumb: storedThumb,
         createdAt: Date.now()
       };
       const log = {
@@ -1767,8 +1829,9 @@ async function renderTriage(){
     const li = document.createElement('li');
     li.className = 'triage-row';
 
-    const thumbUrl = URL.createObjectURL(drink.thumb);
-    triageObjectUrls.push(thumbUrl);
+    const thumbBlob = drinkThumb(drink);
+    const thumbUrl = thumbBlob ? URL.createObjectURL(thumbBlob) : null;
+    if (thumbUrl) triageObjectUrls.push(thumbUrl);
 
     const nameLine = drink.name
       ? `<span class="triage-name">${escapeHtml(drink.name)}</span>`
@@ -1778,8 +1841,12 @@ async function renderTriage(){
       ? (() => { const s = storesArr.find((x) => x.id === log.storeId); return s ? `店：${s.name} ▾` : '店：あとで ▾'; })()
       : '店：あとで ▾';
 
+    const thumbHtml = thumbUrl
+      ? `<img class="triage-thumb" src="${thumbUrl}" alt="" data-ph-small="1" onerror="photoLoadError(this)">`
+      : `<span class="photo-placeholder small" style="width:64px;height:64px;">写真を読み込めなかった</span>`;
+
     li.innerHTML = `
-      <img class="triage-thumb" src="${thumbUrl}" alt="">
+      ${thumbHtml}
       <div class="triage-body">
         ${nameLine}
         <span class="triage-date">${fmtDate(log.drankAt)}</span>
@@ -1874,8 +1941,15 @@ async function handleTriageAllGood(){
 ========================================================= */
 let doneTimer = null;
 function showDoneScreen(drink, log, storeName){
-  const url = URL.createObjectURL(drink.thumb);
-  document.getElementById('donePhoto').src = url;
+  const donePhotoEl = document.getElementById('donePhoto');
+  resetPhotoFallback(donePhotoEl);
+  donePhotoEl.onerror = () => photoLoadError(donePhotoEl);
+  const doneThumbBlob = drinkThumb(drink);
+  if (doneThumbBlob){
+    donePhotoEl.src = URL.createObjectURL(doneThumbBlob);
+  } else {
+    photoLoadError(donePhotoEl);
+  }
   const info = ratingInfo(log.rating);
   document.getElementById('doneRating').textContent = `${info.emoji} ${info.label}`;
   document.getElementById('doneStore').textContent = storeName;
@@ -2145,8 +2219,9 @@ async function renderHome(){
     const btn = document.createElement('button');
     btn.className = 'log-row';
 
-    const thumbUrl = URL.createObjectURL(drink.thumb);
-    homeThumbUrls.push(thumbUrl);
+    const thumbBlob = drinkThumb(drink);
+    const thumbUrl = thumbBlob ? URL.createObjectURL(thumbBlob) : null;
+    if (thumbUrl) homeThumbUrls.push(thumbUrl);
 
     let nameLine;
     if (drink.excluded){
@@ -2162,9 +2237,12 @@ async function renderHome(){
     }
     const storeName = store ? escapeHtml(store.name) : '店：あとで';
     const provisionalTag = log.provisional ? ' <span class="tag-provisional">仮</span>' : '';
+    const thumbHtml = thumbUrl
+      ? `<img class="log-thumb${drink.excluded ? ' muted' : ''}" src="${thumbUrl}" alt="" data-ph-small="1" onerror="photoLoadError(this)">`
+      : `<span class="photo-placeholder small" style="width:64px;height:64px;">写真を読み込めなかった</span>`;
 
     btn.innerHTML = `
-      <img class="log-thumb${drink.excluded ? ' muted' : ''}" src="${thumbUrl}" alt="">
+      ${thumbHtml}
       <span class="log-info">
         ${nameLine}
         <span class="log-sub">${info.emoji} ${info.label}${provisionalTag} · ${storeName} · ${fmtDate(log.drankAt)}</span>
@@ -2564,8 +2642,17 @@ async function renderDetail(){
   const store = log.storeId ? await dbGet('stores', log.storeId) : null;
 
   if (detailPhotoUrl) URL.revokeObjectURL(detailPhotoUrl);
-  detailPhotoUrl = URL.createObjectURL(drink.photo);
-  document.getElementById('detailPhoto').src = detailPhotoUrl;
+  detailPhotoUrl = null;
+  const detailPhotoEl = document.getElementById('detailPhoto');
+  resetPhotoFallback(detailPhotoEl);
+  detailPhotoEl.onerror = () => photoLoadError(detailPhotoEl);
+  const detailPhotoBlob = drinkPhoto(drink);
+  if (detailPhotoBlob){
+    detailPhotoUrl = URL.createObjectURL(detailPhotoBlob);
+    detailPhotoEl.src = detailPhotoUrl;
+  } else {
+    photoLoadError(detailPhotoEl);
+  }
   document.getElementById('detailMeta').textContent = fmtDate(log.drankAt);
 
   renderDrinkInfo(drink);
@@ -2747,11 +2834,15 @@ async function openShelfHistory(){
       const button = document.createElement('button');
       button.className = 'btn-secondary';
       button.style.textAlign = 'left';
-      const url = URL.createObjectURL(entry.photo);
-      shelfHistoryUrls.push(url);
+      const entryBlob = shelfEntryPhoto(entry);
+      const url = entryBlob ? URL.createObjectURL(entryBlob) : null;
+      if (url) shelfHistoryUrls.push(url);
       const names = (entry.result?.picks || []).map(p => p.name).filter(Boolean);
       if (entry.result?.adventure?.name) names.push(entry.result.adventure.name);
-      button.innerHTML = `<img src="${url}" alt="棚の写真" style="width:100%;height:150px;object-fit:cover;border-radius:12px;">
+      const imgHtml = url
+        ? `<img src="${url}" alt="棚の写真" style="width:100%;height:150px;object-fit:cover;border-radius:12px;" onerror="photoLoadError(this)">`
+        : `<p class="photo-placeholder">写真を読み込めなかった</p>`;
+      button.innerHTML = `${imgHtml}
         <p>${escapeHtml(entry.place || '場所未入力')}</p>
         <p class="detail-meta">${escapeHtml(new Date(entry.createdAt).toLocaleString('ja-JP'))}</p>
         <p>${escapeHtml(names.join(' ／ ') || (entry.result ? 'このお告げなし' : '写真を保存済み・提案なし'))}</p>`;
@@ -2771,8 +2862,17 @@ async function openSavedShelf(id){
     shelfBackTarget = 'shelfHistory';
     showScreen('shelf');
     if (shelfPhotoUrl) URL.revokeObjectURL(shelfPhotoUrl);
-    shelfPhotoUrl = URL.createObjectURL(entry.photo);
-    document.getElementById('shelfPhoto').src = shelfPhotoUrl;
+    shelfPhotoUrl = null;
+    const shelfPhotoEl = document.getElementById('shelfPhoto');
+    resetPhotoFallback(shelfPhotoEl);
+    shelfPhotoEl.onerror = () => photoLoadError(shelfPhotoEl);
+    const shelfBlob = shelfEntryPhoto(entry);
+    if (shelfBlob){
+      shelfPhotoUrl = URL.createObjectURL(shelfBlob);
+      shelfPhotoEl.src = shelfPhotoUrl;
+    } else {
+      photoLoadError(shelfPhotoEl);
+    }
     await showShelfLocation(entry, false);
     if (token !== shelfViewToken) return;
     if (entry.result) renderShelfResult(entry.result);
@@ -2905,7 +3005,9 @@ async function handleShelfPhoto(file){
   activeShelfId = null;
   shelfBackTarget = 'home';
   showScreen('shelf');
-  document.getElementById('shelfPhoto').removeAttribute('src');
+  const shelfPhotoElInit = document.getElementById('shelfPhoto');
+  resetPhotoFallback(shelfPhotoElInit);
+  shelfPhotoElInit.removeAttribute('src');
   document.getElementById('shelfMeta').textContent = '写真を保存中…';
   document.getElementById('shelfLocation').hidden = true;
   document.getElementById('btnShelfPlaceEdit').hidden = true;
@@ -2917,13 +3019,17 @@ async function handleShelfPhoto(file){
     const blob = await canvasToBlob(canvas, 0.85);
     if (bitmap.close) bitmap.close();
 
-    const entry = await updateShelf(id, { photo: blob, createdAt, place: null, result: null });
+    const storedShelfPhoto = await toStored(blob);
+    const entry = await updateShelf(id, { photo: storedShelfPhoto, createdAt, place: null, result: null });
     saved = true;
     if (token !== shelfViewToken) return;
     activeShelfId = id;
     if (shelfPhotoUrl) URL.revokeObjectURL(shelfPhotoUrl);
+    const shelfPhotoElNew = document.getElementById('shelfPhoto');
+    resetPhotoFallback(shelfPhotoElNew);
+    shelfPhotoElNew.onerror = () => photoLoadError(shelfPhotoElNew);
     shelfPhotoUrl = URL.createObjectURL(blob);
-    document.getElementById('shelfPhoto').src = shelfPhotoUrl;
+    shelfPhotoElNew.src = shelfPhotoUrl;
     await showShelfLocation(entry, true);
     if (!hasGeminiAccess()){
       if (token === shelfViewToken) renderShelfError(`写真は残したよ。${noAccessMessage()}`);
@@ -3036,10 +3142,10 @@ function downloadJSON(json){
 async function encodeBlobFields(record){
   const out = { ...record };
   for (const key of Object.keys(record)){
-    const val = record[key];
-    if (val instanceof Blob){
-      out[`${key}B64`] = await blobToBase64(val);
-      out[`${key}Type`] = val.type || 'application/octet-stream';
+    const blob = toBlob(record[key]);
+    if (blob){
+      out[`${key}B64`] = await blobToBase64(blob);
+      out[`${key}Type`] = blob.type || 'application/octet-stream';
       delete out[key];
     }
   }
@@ -3113,7 +3219,13 @@ async function restoreBackup(obj, onProgress){
         if (!rec || rec.id == null) { errors++; continue; }
         const existing = await dbGet(name, rec.id);
         if (existing){ skipped++; continue; }
-        await dbPut(name, decodeBlobFields(rec));
+        const decoded = decodeBlobFields(rec);
+        for (const key of Object.keys(decoded)){
+          if (decoded[key] instanceof Blob){
+            decoded[key] = await toStored(decoded[key]);
+          }
+        }
+        await dbPut(name, decoded);
         added++;
       } catch (e) {
         errors++;
@@ -3259,6 +3371,40 @@ window.sakelog = {
   buildBackup: () => buildBackup(),
   restoreBackup: (obj) => restoreBackup(obj)
 };
+
+/* =========================================================
+   写真Blobの移行（バックグラウンド・アプリ起動ごとに最大1回）
+   古いレコードに残っているBlobをArrayBuffer形式（toStored）に詰め替える。
+   iOSでBlobが読めなくなる不具合の予防。1バージョンにつき一度でいい。
+========================================================= */
+async function migratePhotoBlobsToBuffers(){
+  let already = false;
+  try { already = localStorage.getItem('sakelog.migratedBuf') === '1'; } catch (e) { /* 無視 */ }
+  if (already) return;
+  try {
+    const drinksArr = await dbGetAll('drinks');
+    for (const d of drinksArr){
+      let changed = false;
+      if (d.photo instanceof Blob){ d.photo = await toStored(d.photo); changed = true; }
+      if (d.thumb instanceof Blob){ d.thumb = await toStored(d.thumb); changed = true; }
+      if (changed){
+        await dbPut('drinks', d);
+        await sleep(0);
+      }
+    }
+    const shelvesArr = await dbGetAll('shelves');
+    for (const s of shelvesArr){
+      if (s.photo instanceof Blob){
+        s.photo = await toStored(s.photo);
+        await dbPut('shelves', s);
+        await sleep(0);
+      }
+    }
+    try { localStorage.setItem('sakelog.migratedBuf', '1'); } catch (e) { /* 無視 */ }
+  } catch (e) {
+    // 失敗しても次回起動時にまた試す（フラグを立てない）
+  }
+}
 
 /* =========================================================
    イベント登録
@@ -3428,6 +3574,7 @@ function init(){
   });
 
   seedStoresIfEmpty().then(renderHome);
+  migratePhotoBlobsToBuffers();
 }
 
 init();
