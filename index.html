@@ -740,6 +740,7 @@
     </div>
     <button type="button" class="btn-text" id="btnShelfPlaceEdit" hidden>場所を入れる・変える</button>
     <div id="shelfBody"></div>
+    <button type="button" class="btn-secondary" id="btnShelfRetry" hidden>🔮 もう一度占う</button>
     <button class="btn-secondary" id="btnShelfAgain">📷 もう一枚</button>
   </section>
 
@@ -822,7 +823,8 @@
         <a href="https://line.me/S/sticker/36507457" target="_blank" rel="noopener">白ワイン編</a> ・
         <a href="https://line.me/S/sticker/36509466" target="_blank" rel="noopener">赤ワイン編</a>
       </p>
-      <p class="version-text">v0.13</p>
+      <p class="version-text">v0.14</p>
+      <p class="version-text" id="lastErrorLine" hidden></p>
     </div>
   </section>
 
@@ -1178,17 +1180,30 @@ function blobToBase64(blob){
 // エラーは { type: 'nokey' | 'auth' | 'network' | 'trial_exhausted' | 'trial_disabled' | 'daily_cap' | 'other' } の形で投げる
 // 自分のキーがあれば直接Geminiへ、なければRELAY_URLがある場合だけお試し中継経由で呼ぶ
 async function callGemini(parts, kind){
-  const key = getGeminiKey();
-  if (key) return callGeminiDirect(parts, key);
-  if (RELAY_URL) return callGeminiRelay(parts, kind);
-  throw { type: 'nokey' };
+  try {
+    const key = getGeminiKey();
+    if (key) return await callGeminiDirect(parts, key, false, kind);
+    if (RELAY_URL) return await callGeminiRelay(parts, kind);
+    throw { type: 'nokey' };
+  } catch (err) {
+    storeLastError(kind || 'other', err);
+    throw err;
+  }
 }
 
-async function callGeminiDirect(parts, key, _retried){
+// Gemini無料枠は高負荷503が多いが、thinkingConfigを付けると高速・安定して返る
+function geminiGenerationConfig(kind){
+  const base = { response_mime_type: 'application/json', maxOutputTokens: 8192 };
+  if (kind === 'label' || kind === 'shelf') base.thinkingConfig = { thinkingBudget: 0 };
+  else if (kind === 'profile') base.thinkingConfig = { thinkingLevel: 'low' };
+  return base;
+}
+
+async function callGeminiDirect(parts, key, _retried, kind){
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(key)}`;
   const body = {
     contents: [{ parts }],
-    generationConfig: { response_mime_type: 'application/json' }
+    generationConfig: geminiGenerationConfig(kind)
   };
   let res;
   try {
@@ -1203,11 +1218,11 @@ async function callGeminiDirect(parts, key, _retried){
   if ((res.status === 503 || res.status === 429) && !_retried){
     _retried = true;
     await new Promise((r) => setTimeout(r, 2000));
-    return callGeminiDirect(parts, key, true);
+    return callGeminiDirect(parts, key, true, kind);
   }
-  if (res.status === 503 || res.status === 429) throw { type: 'busy' };
-  if (res.status === 401 || res.status === 403) throw { type: 'auth' };
-  if (!res.ok) throw { type: 'other', status: res.status };
+  if (res.status === 503 || res.status === 429) throw { type: 'busy', detail: 'http ' + res.status };
+  if (res.status === 401 || res.status === 403) throw { type: 'auth', detail: 'http ' + res.status };
+  if (!res.ok) throw { type: 'other', status: res.status, detail: 'http ' + res.status };
   return extractGeminiJson(res);
 }
 
@@ -1217,7 +1232,7 @@ async function callGeminiRelay(parts, kind){
   const body = {
     kind: kind || 'label',
     contents: [{ parts }],
-    generationConfig: { response_mime_type: 'application/json' }
+    generationConfig: geminiGenerationConfig(kind)
   };
   let res;
   try {
@@ -1234,27 +1249,43 @@ async function callGeminiRelay(parts, kind){
   if (!res.ok){
     let code = null;
     try { const j = await res.clone().json(); code = j && (j.error && typeof j.error === 'string' ? j.error : (j.error && j.error.status)); } catch (e) { /* 本文なし */ }
-    if (code === 'trial_exhausted') throw { type: 'trial_exhausted' };
-    if (code === 'trial_disabled') throw { type: 'trial_disabled' };
-    if (code === 'daily_cap') throw { type: 'daily_cap' };
-    if (code === 'upstream_busy' || code === 'UNAVAILABLE' || res.status === 503 || res.status === 429) throw { type: 'busy' };
-    if (res.status === 401 || res.status === 403) throw { type: 'auth' };
-    throw { type: 'other', status: res.status };
+    if (code === 'trial_exhausted') throw { type: 'trial_exhausted', detail: code };
+    if (code === 'trial_disabled') throw { type: 'trial_disabled', detail: code };
+    if (code === 'daily_cap') throw { type: 'daily_cap', detail: code };
+    if (code === 'upstream_busy' || code === 'UNAVAILABLE' || res.status === 503 || res.status === 429) throw { type: 'busy', detail: code || ('http ' + res.status) };
+    if (res.status === 401 || res.status === 403) throw { type: 'auth', detail: code || ('http ' + res.status) };
+    throw { type: 'other', status: res.status, detail: code || ('http ' + res.status) };
   }
   return extractGeminiJson(res);
 }
 
 async function extractGeminiJson(res){
   let data;
-  try { data = await res.json(); } catch (e) { throw { type: 'other' }; }
-  const text = data && data.candidates && data.candidates[0]
-    && data.candidates[0].content && data.candidates[0].content.parts
-    && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text;
-  if (!text) throw { type: 'other' };
+  try { data = await res.json(); } catch (e) { throw { type: 'other', detail: 'http ' + res.status }; }
+  if (data && data.error){
+    throw { type: 'other', detail: ((data.error.status || '') + ' ' + (data.error.message || '')).trim().slice(0, 120) };
+  }
+  const candidate = data && data.candidates && data.candidates[0];
+  const finishReason = candidate && candidate.finishReason;
+  if (finishReason && finishReason !== 'STOP'){
+    throw { type: 'other', detail: 'finish:' + finishReason };
+  }
+  const parts = candidate && candidate.content && candidate.content.parts;
+  const text = Array.isArray(parts) ? parts.map((p) => (p && p.text) || '').join('') : '';
+  if (!text) throw { type: 'other', detail: 'http ' + res.status };
+  let cleaned = text.trim();
+  if (cleaned.startsWith('```')){
+    cleaned = cleaned.replace(/^```[a-zA-Z]*\s*/, '').replace(/```\s*$/, '').trim();
+  }
   try {
-    return JSON.parse(text);
+    return JSON.parse(cleaned);
   } catch (e) {
-    throw { type: 'other' };
+    const start = cleaned.indexOf('{');
+    const end = cleaned.lastIndexOf('}');
+    if (start >= 0 && end > start){
+      try { return JSON.parse(cleaned.slice(start, end + 1)); } catch (e2) { /* 下のbadjsonへ */ }
+    }
+    throw { type: 'other', detail: 'badjson:' + cleaned.slice(0, 120) };
   }
 }
 
@@ -1297,6 +1328,45 @@ function geminiErrorMessage(errType){
   if (errType === 'daily_cap') return '今日はみんなの分が上限。明日また試してね';
   if (errType === 'busy') return 'Google側が混んでるみたい。少し待ってもう一回';
   return '読めなかった';
+}
+
+// エラーオブジェクトから詳細文字列を取り出す（デバッグ表示用）
+function errorDetail(err){
+  return (err && (err.detail || err.message)) || '';
+}
+
+// 最後のGeminiエラーを端末に記録（設定画面のデバッグ表示用）。where: 'label'|'profile'|'shelf'
+function storeLastError(where, err){
+  try {
+    const type = (err && err.type) || 'other';
+    const detail = errorDetail(err);
+    localStorage.setItem('sakelog.lastError', JSON.stringify({ at: Date.now(), where, type, detail }));
+  } catch (e) { /* 無視 */ }
+}
+
+function formatLastErrorAt(ts){
+  const d = new Date(ts);
+  const mm = d.getMonth() + 1;
+  const dd = d.getDate();
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mi = String(d.getMinutes()).padStart(2, '0');
+  return `${mm}/${dd} ${hh}:${mi}`;
+}
+
+// 設定シート「このアプリ」の最後のエラー行を更新
+function renderLastErrorLine(){
+  const el = document.getElementById('lastErrorLine');
+  if (!el) return;
+  let raw;
+  try { raw = localStorage.getItem('sakelog.lastError'); } catch (e) { raw = null; }
+  if (!raw){ el.hidden = true; return; }
+  try {
+    const info = JSON.parse(raw);
+    const bits = [formatLastErrorAt(info.at), info.where, info.type];
+    if (info.detail) bits.push(info.detail);
+    el.textContent = `最後のエラー: ${bits.join(' ')}`;
+    el.hidden = false;
+  } catch (e) { el.hidden = true; }
 }
 
 // 酒じゃないと判定されたときのツッコミトースト（subject別）
@@ -1372,6 +1442,14 @@ function canvasToBlob(canvas, quality){
   return new Promise((resolve) => {
     canvas.toBlob((blob) => resolve(blob), 'image/jpeg', quality);
   });
+}
+
+// Gemini待ちの間だけ画面ロックを防ぐ（未対応環境では何もしない）
+async function holdWakeLock(){
+  try { return navigator.wakeLock ? await navigator.wakeLock.request('screen') : null; } catch (e) { return null; }
+}
+async function releaseWakeLock(lock){
+  try { if (lock) await lock.release(); } catch (e) { /* 無視 */ }
 }
 
 // 1枚分の写真処理（本体写真1280px + サムネ160px + 「飲んだ日時」判定）
@@ -1659,17 +1737,22 @@ async function readUnreadLabelsBatch(){
   let drinkCount = 0;
   let excludedCount = 0;
   const stopTypes = ['auth', 'trial_exhausted', 'trial_disabled', 'daily_cap'];
-  for (let i = 0; i < targets.length; i++){
-    btn.textContent = `${i + 1}/${targets.length} 読み取り中…`;
-    const res = await fetchLabelForDrink(targets[i]);
-    if (res.ok){
-      if (res.drink.excluded) excludedCount++;
-      else drinkCount++;
-    } else if (stopTypes.includes(res.errType)){
-      toast(geminiErrorMessage(res.errType));
-      break;
+  const wakeLock = await holdWakeLock();
+  try {
+    for (let i = 0; i < targets.length; i++){
+      btn.textContent = `${i + 1}/${targets.length} 読み取り中…`;
+      const res = await fetchLabelForDrink(targets[i]);
+      if (res.ok){
+        if (res.drink.excluded) excludedCount++;
+        else drinkCount++;
+      } else if (stopTypes.includes(res.errType)){
+        toast(geminiErrorMessage(res.errType));
+        break;
+      }
+      if (i < targets.length - 1) await sleep(400);
     }
-    if (i < targets.length - 1) await sleep(400);
+  } finally {
+    await releaseWakeLock(wakeLock);
   }
   btn.disabled = false;
   btn.textContent = '📖 未読のラベルをまとめて読み取る';
@@ -1783,11 +1866,16 @@ async function runLabelBatchDuringImport(){
   const targets = getUnreadLabelTargets(drinks);
   if (targets.length === 0) return;
   const stopTypes = ['auth', 'trial_exhausted', 'trial_disabled', 'daily_cap'];
-  for (let i = 0; i < targets.length; i++){
-    setImportingProgress(i + 1, targets.length, 'ラベル読み取り中');
-    const res = await fetchLabelForDrink(targets[i]);
-    if (!res.ok && stopTypes.includes(res.errType)) break;
-    if (i < targets.length - 1) await sleep(400);
+  const wakeLock = await holdWakeLock();
+  try {
+    for (let i = 0; i < targets.length; i++){
+      setImportingProgress(i + 1, targets.length, 'ラベル読み取り中');
+      const res = await fetchLabelForDrink(targets[i]);
+      if (!res.ok && stopTypes.includes(res.errType)) break;
+      if (i < targets.length - 1) await sleep(400);
+    }
+  } finally {
+    await releaseWakeLock(wakeLock);
   }
 }
 
@@ -2941,6 +3029,8 @@ function buildShelfPrompt(context){
 ユーザーの好みに直球で合うものが棚になければ、picksは空にして正直に"none"と答えてください。嘘の銘柄をでっち上げないでください。
 positionは棚の写真の中で指させる言い方にしてください（例：「左から3本目・上段」）。
 
+出力は簡潔に。bottlesは多くても15本まで（ボトルが多い場合は目立つ/読みやすいものを優先して15本に絞る）。各項目は短く、reason・none_reasonなどの説明文は40文字以内。JSON以外の説明文は書かない。
+
 ${context}
 
 次のJSON形式だけで回答してください（説明文は不要）：
@@ -2953,12 +3043,19 @@ ${context}
 }`;
 }
 
+function setShelfRetryVisible(visible){
+  const btn = document.getElementById('btnShelfRetry');
+  if (btn) btn.hidden = !visible;
+}
+
 function renderShelfLoading(){
-  document.getElementById('shelfBody').innerHTML = '<p class="shelf-loading">棚を占ってるよ…🔮</p>';
+  document.getElementById('shelfBody').innerHTML = '<p class="shelf-loading">棚を占ってるよ…🔮（10秒くらい）</p>';
+  setShelfRetryVisible(false);
 }
 
 function renderShelfError(msg){
   document.getElementById('shelfBody').innerHTML = `<p class="shelf-none">${escapeHtml(msg)}</p>`;
+  setShelfRetryVisible(true);
 }
 
 function shelfCardHtml(item, adventure){
@@ -2972,6 +3069,7 @@ function shelfCardHtml(item, adventure){
 }
 
 function renderShelfResult(result){
+  setShelfRetryVisible(false);
   const body = document.getElementById('shelfBody');
   let html = '';
 
@@ -3028,8 +3126,8 @@ async function handleShelfPhoto(file){
   let saved = false;
   try {
     const bitmap = await loadBitmap(file);
-    const canvas = drawToCanvas(bitmap, 1800); // ラベルが読めるよう長辺1800pxまで
-    const blob = await canvasToBlob(canvas, 0.85);
+    const canvas = drawToCanvas(bitmap, 1400); // ラベルが読めるよう長辺1400pxまで
+    const blob = await canvasToBlob(canvas, 0.82);
     if (bitmap.close) bitmap.close();
 
     const storedShelfPhoto = await toStored(blob);
@@ -3051,7 +3149,13 @@ async function handleShelfPhoto(file){
 
     const context = await buildShelfContext();
     const prompt = buildShelfPrompt(context);
-    const result = await callGeminiVisionWithPrompt(blob, prompt);
+    const wakeLock = await holdWakeLock();
+    let result;
+    try {
+      result = await callGeminiVisionWithPrompt(blob, prompt);
+    } finally {
+      await releaseWakeLock(wakeLock);
+    }
     await updateShelf(id, { result });
     if (token === shelfViewToken) renderShelfResult(result);
   } catch (err) {
@@ -3059,7 +3163,47 @@ async function handleShelfPhoto(file){
     if (!saved) document.getElementById('shelfMeta').textContent = '写真を保存できませんでした';
     console.error('shelf error', err);
     const why = (err && err.type) ? geminiErrorMessage(err.type) : ((err && err.message) ? err.message : '原因不明');
-    renderShelfError(saved ? `写真は残したよ。お告げが出せなかった（${why}）` : '写真を保存できなかった。もう一度試してね。');
+    const detail = errorDetail(err);
+    const whyText = detail ? `${why} / ${detail}` : why;
+    renderShelfError(saved ? `写真は残したよ。お告げが出せなかった（${whyText}）` : '写真を保存できなかった。もう一度試してね。');
+  }
+}
+
+// 「もう一度占う」：結果が出なかった保存済みの棚を、同じ写真でもう一度占い直す
+async function retryShelf(id){
+  if (!id) return;
+  const token = shelfViewToken;
+  try {
+    const entry = await dbGet('shelves', id);
+    if (token !== shelfViewToken || !entry) return;
+    const blob = shelfEntryPhoto(entry);
+    if (!blob){
+      renderShelfError('写真が見つからなかった。撮り直してね。');
+      return;
+    }
+    renderShelfLoading();
+    if (!hasGeminiAccess()){
+      if (token === shelfViewToken) renderShelfError(noAccessMessage());
+      return;
+    }
+    const context = await buildShelfContext();
+    const prompt = buildShelfPrompt(context);
+    const wakeLock = await holdWakeLock();
+    let result;
+    try {
+      result = await callGeminiVisionWithPrompt(blob, prompt);
+    } finally {
+      await releaseWakeLock(wakeLock);
+    }
+    await updateShelf(id, { result });
+    if (token === shelfViewToken) renderShelfResult(result);
+  } catch (err) {
+    if (token !== shelfViewToken) return;
+    console.error('shelf retry error', err);
+    const why = (err && err.type) ? geminiErrorMessage(err.type) : ((err && err.message) ? err.message : '原因不明');
+    const detail = errorDetail(err);
+    const whyText = detail ? `${why} / ${detail}` : why;
+    renderShelfError(`お告げが出せなかった（${whyText}）`);
   }
 }
 
@@ -3290,6 +3434,7 @@ function openSettingsSheet(){
   renderGeminiKeyUI();
   updateTrialStatus();
   renderBackupUI();
+  renderLastErrorLine();
   showScreen('settings');
   window.scrollTo(0, 0);
 }
@@ -3490,6 +3635,9 @@ function init(){
   document.getElementById('btnShelfBack').addEventListener('click', leaveShelf);
   document.getElementById('btnShelfAgain').addEventListener('click', () => {
     document.getElementById('shelfInput').click();
+  });
+  document.getElementById('btnShelfRetry').addEventListener('click', () => {
+    retryShelf(activeShelfId);
   });
 
   document.getElementById('btnTriageBack').addEventListener('click', closeTriage);
