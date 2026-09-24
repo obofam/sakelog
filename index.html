@@ -465,6 +465,13 @@
   .profile-quote{font-size:16px;font-weight:700;margin:0;}
   .profile-axis{font-size:15px;margin:2px 0;line-height:1.6;}
   .profile-adventure{font-size:15px;margin:0;line-height:1.6;}
+  .teaser-glasses{display:flex;gap:8px;font-size:28px;margin:4px 0 10px;}
+  .teaser-glass{filter:grayscale(1);opacity:0.25;transition:opacity .3s;}
+  .teaser-glass.on{filter:none;opacity:1;}
+  .teaser-text{font-size:15px;margin:0 0 6px;}
+  .teaser-text b{color:var(--accent);}
+  .teaser-sample{font-size:13px;color:var(--muted);margin:0;line-height:1.6;}
+  .profile-refresh{width:100%;margin:4px 0 6px;font-size:14px;}
   .profile-footer{
     display:flex;justify-content:space-between;align-items:center;
     margin-top:16px;
@@ -823,7 +830,7 @@
         <a href="https://line.me/S/sticker/36507457" target="_blank" rel="noopener">白ワイン編</a> ・
         <a href="https://line.me/S/sticker/36509466" target="_blank" rel="noopener">赤ワイン編</a>
       </p>
-      <p class="version-text">v0.14</p>
+      <p class="version-text">v0.15</p>
       <p class="version-text" id="lastErrorLine" hidden></p>
     </div>
   </section>
@@ -2390,11 +2397,6 @@ function updateStatusLine(logs, provisionalCount, readCount){
     el.onclick = openSettingsSheet;
     return;
   }
-  if (readCount < PROFILE_MIN){
-    el.textContent = `言語化まで あと ${PROFILE_MIN - readCount}本（ラベル読み取り済み ${readCount}本）`;
-    el.hidden = false;
-    return;
-  }
   const FOURTEEN_DAYS = 14 * 24 * 60 * 60 * 1000;
   const lastAt = getLastBackupAt();
   const stale = !lastAt || (Date.now() - lastAt > FOURTEEN_DAYS);
@@ -2418,11 +2420,14 @@ async function updateProfileSection(readCount){
 
   if (readCount < PROFILE_MIN){
     genBtn.hidden = true;
-    cardWrap.hidden = true;
+    if (readCount < 1){ cardWrap.hidden = true; return; }
+    renderProfileTeaser(readCount);
+    cardWrap.hidden = false;
     return;
   }
 
   const profile = await dbGet('profile', 'me');
+  if (profile) profile._newSince = Math.max(0, readCount - (profile.basedOn || 0));
   if (!profile){
     genBtn.hidden = false;
     cardWrap.hidden = true;
@@ -2440,6 +2445,22 @@ function setProfileOpen(open){
   try { localStorage.setItem('sakelog.profileOpen', open ? '1' : '0'); } catch (e) { /* 無視 */ }
 }
 
+// 5本たまる前：グラスが埋まっていくのを見せて、好みの言語化を予告する
+function renderProfileTeaser(readCount){
+  const wrap = document.getElementById('profileCard');
+  const left = PROFILE_MIN - readCount;
+  let glasses = '';
+  for (let i = 0; i < PROFILE_MIN; i++){
+    glasses += `<span class="teaser-glass${i < readCount ? ' on' : ''}">🍷</span>`;
+  }
+  wrap.innerHTML = `
+    <h3>あなたの好み</h3>
+    <div class="teaser-glasses" aria-label="${readCount}本 / ${PROFILE_MIN}本">${glasses}</div>
+    <p class="teaser-text">あと <b>${left}本</b> で、あなたの好みを言葉にするよ</p>
+    <p class="teaser-sample">たとえば「〇〇な感じが好きな人。お店では△△って言えば間違いない」みたいに。</p>
+  `;
+}
+
 function renderProfileCard(profile){
   const wrap = document.getElementById('profileCard');
   const dateStr = profile.generatedAt ? fmtDate(profile.generatedAt) : '';
@@ -2447,6 +2468,7 @@ function renderProfileCard(profile){
   wrap.innerHTML = `
     <h3>あなたの好み</h3>
     <p class="profile-summary">${escapeHtml(profile.summary || '')}</p>
+    ${profile._newSince >= PROFILE_MIN ? `<button type="button" class="btn-secondary profile-refresh" id="btnRefreshProfile">🔄 あれから${profile._newSince}本増えたよ → 好みを更新</button>` : ''}
     <button type="button" class="btn-text" id="btnToggleProfile" style="padding-left:0;">${open ? '閉じる ▴' : '詳しく ▾'}</button>
     <div id="profileDetail" ${open ? '' : 'hidden'}>
       <p class="profile-label">お店で言うなら</p>
@@ -2467,6 +2489,11 @@ function renderProfileCard(profile){
     renderProfileCard(profile);
   });
   document.getElementById('btnRegenProfile').addEventListener('click', generateProfile);
+  const refreshBtn = document.getElementById('btnRefreshProfile');
+  if (refreshBtn) refreshBtn.addEventListener('click', () => {
+    refreshBtn.disabled = true; refreshBtn.textContent = '考え中…';
+    generateProfile();
+  });
 }
 
 // 属性ごとの集計対象（read済みの銘柄×ログの組）
@@ -2606,6 +2633,8 @@ async function generateProfile(){
     toast(msg || '読めなかった');
   } finally {
     if (genBtn){ genBtn.disabled = false; genBtn.textContent = '🍷 好みを言語化する'; }
+    const refreshBtn = document.getElementById('btnRefreshProfile');
+    if (refreshBtn && refreshBtn.disabled){ refreshBtn.disabled = false; refreshBtn.textContent = '🔄 好みを更新'; }
   }
 }
 
