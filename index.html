@@ -834,7 +834,7 @@
         <a href="https://line.me/S/sticker/36507457" target="_blank" rel="noopener">白ワイン編</a> ・
         <a href="https://line.me/S/sticker/36509466" target="_blank" rel="noopener">赤ワイン編</a>
       </p>
-      <p class="version-text">v0.17</p>
+      <p class="version-text">v0.18</p>
       <p class="version-text" id="lastErrorLine" hidden></p>
     </div>
   </section>
@@ -1199,7 +1199,7 @@ async function callGemini(parts, kind){
       } catch (err) {
         // 自分のキーの無料枠が尽きたら、お試し枠が残っていればそっちで読む
         const trialLeft = getTrialRemaining();
-        if ((err.type === 'quota_day' || err.type === 'busy') && RELAY_URL && trialLeft !== 0){
+        if (['quota_day', 'quota_minute', 'busy'].includes(err.type) && RELAY_URL && trialLeft !== 0){
           try { return await callGeminiRelay(parts, kind); }
           catch (relayErr) { throw err; } // お試しもダメなら、自分のキー側の理由を見せる
         }
@@ -1241,19 +1241,22 @@ async function callGeminiDirect(parts, key, _retried, kind){
   if (res.status === 429){
     // 無料枠の上限。1日分なのか1分あたりなのかを本文から見分ける
     let info = '';
+    let msg = '';
     let waitMs = 0;
     try {
       const data = await res.clone().json();
       info = JSON.stringify((data && data.error && data.error.details) || '');
+      msg = ((data && data.error && data.error.message) || '').slice(0, 100);
       const m = info.match(/"retryDelay":"(\d+(?:\.\d+)?)s"/);
       if (m) waitMs = Math.ceil(parseFloat(m[1]) * 1000);
     } catch (e) { /* 本文なし */ }
-    if (/PerDay/i.test(info)) throw { type: 'quota_day', detail: 'http 429 per-day' };
+    // 1日の上限、または残高・プランの問題（billing / plan）は待っても直らない
+    if (/PerDay/i.test(info) || /billing|plan|credit/i.test(msg)) throw { type: 'quota_day', detail: ('http 429 ' + msg).trim() };
     if (!_retried){
       await new Promise((r) => setTimeout(r, Math.min(Math.max(waitMs, 5000), 30000)));
       return callGeminiDirect(parts, key, true, kind);
     }
-    throw { type: 'quota_minute', detail: 'http 429 per-minute' };
+    throw { type: 'quota_minute', detail: ('http 429 ' + msg).trim() };
   }
   if (res.status === 503 && !_retried){
     await new Promise((r) => setTimeout(r, 2000));
@@ -1365,7 +1368,7 @@ function geminiErrorMessage(errType){
   if (errType === 'trial_exhausted') return 'お試し枠が終わったよ。自分のキーを入れると続けられる（設定 → 取り方）';
   if (errType === 'trial_disabled') return 'お試しは今お休み中。自分のキーを入れてね';
   if (errType === 'daily_cap') return '今日はみんなの分が上限。明日また試してね';
-  if (errType === 'quota_day') return '自分のキーの今日の無料枠を使い切ったみたい。明日には戻るよ';
+  if (errType === 'quota_day') return '自分のキーの枠を使い切ったみたい（無料枠なら明日戻る）';
   if (errType === 'quota_minute') return '短い間に読みすぎたみたい。1分待ってもう一回';
   if (errType === 'busy') return 'Google側が混んでるみたい。少し待ってもう一回';
   return '読めなかった';
