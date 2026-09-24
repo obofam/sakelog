@@ -472,6 +472,8 @@
   .teaser-text b{color:var(--accent);}
   .teaser-sample{font-size:13px;color:var(--muted);margin:0;line-height:1.6;}
   .profile-refresh{width:100%;margin:4px 0 6px;font-size:14px;}
+  .shelf-location{background:var(--surface);border-radius:var(--r);padding:16px;margin:12px 0;}
+  .shelf-location-q{font-size:16px;font-weight:700;margin:0 0 4px;}
   .profile-footer{
     display:flex;justify-content:space-between;align-items:center;
     margin-top:16px;
@@ -736,17 +738,19 @@
     <button type="button" class="btn-text" id="btnShelfBack">← 戻る</button>
     <img class="detail-photo" id="shelfPhoto" style="max-height:36vh;" alt="棚の写真">
     <p id="shelfMeta" class="detail-meta" aria-live="polite"></p>
-    <div id="shelfLocation" hidden>
-      <label for="shelfPlace">ちなみに今どこ？（任意）</label>
-      <div id="shelfPlaceChoices" class="grid2" style="margin:12px 0;"></div>
-      <form id="shelfPlaceForm">
-        <input id="shelfPlace" type="text" maxlength="120" placeholder="店名・場所（例：サミット ○○店）">
-        <button class="btn-secondary" type="submit">場所を残す</button>
-      </form>
-      <button type="button" class="btn-text full" id="btnShelfPlaceSkip">今は入れない</button>
-    </div>
-    <button type="button" class="btn-text" id="btnShelfPlaceEdit" hidden>場所を入れる・変える</button>
     <div id="shelfBody"></div>
+    <div id="shelfLocation" class="shelf-location" hidden>
+      <p class="shelf-location-q">この棚、どこのお店？</p>
+      <p class="detail-meta" style="margin:0 0 10px;">入れておくと、あとで「あのワインどこで見たっけ？」ってときに「前の棚占い」で探せるよ。</p>
+      <div id="shelfPlaceChoices" class="grid2" style="margin:0 0 10px;"></div>
+      <button type="button" class="btn-text" id="btnShelfPlaceOther" hidden>✏️ ほかのお店を入力</button>
+      <form id="shelfPlaceForm">
+        <input id="shelfPlace" type="text" maxlength="120" placeholder="お店の名前（例：サミット ○○店）">
+        <button class="btn-secondary" type="submit">このお店で記録</button>
+      </form>
+      <button type="button" class="btn-text full" id="btnShelfPlaceSkip">入れない</button>
+    </div>
+    <button type="button" class="btn-text" id="btnShelfPlaceEdit" hidden>📍 お店を入れる・変える</button>
     <button type="button" class="btn-secondary" id="btnShelfRetry" hidden>🔮 もう一度占う</button>
     <button class="btn-secondary" id="btnShelfAgain">📷 もう一枚</button>
   </section>
@@ -830,7 +834,7 @@
         <a href="https://line.me/S/sticker/36507457" target="_blank" rel="noopener">白ワイン編</a> ・
         <a href="https://line.me/S/sticker/36509466" target="_blank" rel="noopener">赤ワイン編</a>
       </p>
-      <p class="version-text">v0.15</p>
+      <p class="version-text">v0.17</p>
       <p class="version-text" id="lastErrorLine" hidden></p>
     </div>
   </section>
@@ -1189,7 +1193,19 @@ function blobToBase64(blob){
 async function callGemini(parts, kind){
   try {
     const key = getGeminiKey();
-    if (key) return await callGeminiDirect(parts, key, false, kind);
+    if (key){
+      try {
+        return await callGeminiDirect(parts, key, false, kind);
+      } catch (err) {
+        // 自分のキーの無料枠が尽きたら、お試し枠が残っていればそっちで読む
+        const trialLeft = getTrialRemaining();
+        if ((err.type === 'quota_day' || err.type === 'busy') && RELAY_URL && trialLeft !== 0){
+          try { return await callGeminiRelay(parts, kind); }
+          catch (relayErr) { throw err; } // お試しもダメなら、自分のキー側の理由を見せる
+        }
+        throw err;
+      }
+    }
     if (RELAY_URL) return await callGeminiRelay(parts, kind);
     throw { type: 'nokey' };
   } catch (err) {
@@ -1222,8 +1238,24 @@ async function callGeminiDirect(parts, key, _retried, kind){
   } catch (e) {
     throw { type: 'network' };
   }
-  if ((res.status === 503 || res.status === 429) && !_retried){
-    _retried = true;
+  if (res.status === 429){
+    // 無料枠の上限。1日分なのか1分あたりなのかを本文から見分ける
+    let info = '';
+    let waitMs = 0;
+    try {
+      const data = await res.clone().json();
+      info = JSON.stringify((data && data.error && data.error.details) || '');
+      const m = info.match(/"retryDelay":"(\d+(?:\.\d+)?)s"/);
+      if (m) waitMs = Math.ceil(parseFloat(m[1]) * 1000);
+    } catch (e) { /* 本文なし */ }
+    if (/PerDay/i.test(info)) throw { type: 'quota_day', detail: 'http 429 per-day' };
+    if (!_retried){
+      await new Promise((r) => setTimeout(r, Math.min(Math.max(waitMs, 5000), 30000)));
+      return callGeminiDirect(parts, key, true, kind);
+    }
+    throw { type: 'quota_minute', detail: 'http 429 per-minute' };
+  }
+  if (res.status === 503 && !_retried){
     await new Promise((r) => setTimeout(r, 2000));
     return callGeminiDirect(parts, key, true, kind);
   }
@@ -1333,6 +1365,8 @@ function geminiErrorMessage(errType){
   if (errType === 'trial_exhausted') return 'お試し枠が終わったよ。自分のキーを入れると続けられる（設定 → 取り方）';
   if (errType === 'trial_disabled') return 'お試しは今お休み中。自分のキーを入れてね';
   if (errType === 'daily_cap') return '今日はみんなの分が上限。明日また試してね';
+  if (errType === 'quota_day') return '自分のキーの今日の無料枠を使い切ったみたい。明日には戻るよ';
+  if (errType === 'quota_minute') return '短い間に読みすぎたみたい。1分待ってもう一回';
   if (errType === 'busy') return 'Google側が混んでるみたい。少し待ってもう一回';
   return '読めなかった';
 }
@@ -1728,6 +1762,9 @@ function getUnreadLabelTargets(drinks){
 }
 
 // 設定シートの「📖 未読のラベルをまとめて読み取る」
+// Gemini無料枠は1分あたりの回数制限がある（400ms間隔だと429が出た）。まとめ読みは間を空ける
+const LABEL_BATCH_GAP_MS = 4500;
+
 async function readUnreadLabelsBatch(){
   if (!hasGeminiAccess()){
     toast(noAccessMessage());
@@ -1743,7 +1780,7 @@ async function readUnreadLabelsBatch(){
   btn.disabled = true;
   let drinkCount = 0;
   let excludedCount = 0;
-  const stopTypes = ['auth', 'trial_exhausted', 'trial_disabled', 'daily_cap'];
+  const stopTypes = ['auth', 'trial_exhausted', 'trial_disabled', 'daily_cap', 'quota_day'];
   const wakeLock = await holdWakeLock();
   try {
     for (let i = 0; i < targets.length; i++){
@@ -1756,7 +1793,7 @@ async function readUnreadLabelsBatch(){
         toast(geminiErrorMessage(res.errType));
         break;
       }
-      if (i < targets.length - 1) await sleep(400);
+      if (i < targets.length - 1) await sleep(LABEL_BATCH_GAP_MS);
     }
   } finally {
     await releaseWakeLock(wakeLock);
@@ -1872,14 +1909,14 @@ async function runLabelBatchDuringImport(){
   const drinks = await dbGetAll('drinks');
   const targets = getUnreadLabelTargets(drinks);
   if (targets.length === 0) return;
-  const stopTypes = ['auth', 'trial_exhausted', 'trial_disabled', 'daily_cap'];
+  const stopTypes = ['auth', 'trial_exhausted', 'trial_disabled', 'daily_cap', 'quota_day'];
   const wakeLock = await holdWakeLock();
   try {
     for (let i = 0; i < targets.length; i++){
       setImportingProgress(i + 1, targets.length, 'ラベル読み取り中');
       const res = await fetchLabelForDrink(targets[i]);
       if (!res.ok && stopTypes.includes(res.errType)) break;
-      if (i < targets.length - 1) await sleep(400);
+      if (i < targets.length - 1) await sleep(LABEL_BATCH_GAP_MS);
     }
   } finally {
     await releaseWakeLock(wakeLock);
@@ -2905,7 +2942,7 @@ async function updateShelf(id, changes){
 
 function renderShelfMeta(entry){
   document.getElementById('shelfMeta').textContent =
-    `${new Date(entry.createdAt).toLocaleString('ja-JP')} ・ ${entry.place || '場所未入力'} ・ 保存済み`;
+    `${new Date(entry.createdAt).toLocaleString('ja-JP')} ・ ${entry.place || 'お店未入力'} ・ 保存済み`;
 }
 
 async function showShelfLocation(entry, expanded){
@@ -2928,6 +2965,10 @@ async function showShelfLocation(entry, expanded){
     button.onclick = () => saveShelfPlace(name);
     choices.appendChild(button);
   });
+  // よく行く店があればボタンで選ぶのが基本。入力欄は「ほかのお店」を押したときだけ
+  const hasChoices = names.length > 0 && !entry.place;
+  document.getElementById('shelfPlaceForm').hidden = hasChoices;
+  document.getElementById('btnShelfPlaceOther').hidden = !hasChoices;
 }
 
 async function saveShelfPlace(place){
@@ -2939,7 +2980,7 @@ async function saveShelfPlace(place){
     renderShelfMeta(entry);
     document.getElementById('shelfLocation').hidden = true;
     document.getElementById('btnShelfPlaceEdit').hidden = false;
-    toast('場所を残したよ');
+    toast('お店を記録したよ');
   } catch (err) { toast('場所を保存できなかった。もう一度試してね'); }
 }
 
@@ -2973,7 +3014,7 @@ async function openShelfHistory(){
         ? `<img src="${url}" alt="棚の写真" style="width:100%;height:150px;object-fit:cover;border-radius:12px;" onerror="photoLoadError(this)">`
         : `<p class="photo-placeholder">写真を読み込めなかった</p>`;
       button.innerHTML = `${imgHtml}
-        <p>${escapeHtml(entry.place || '場所未入力')}</p>
+        <p>${escapeHtml(entry.place || 'お店未入力')}</p>
         <p class="detail-meta">${escapeHtml(new Date(entry.createdAt).toLocaleString('ja-JP'))}</p>
         <p>${escapeHtml(names.join(' ／ ') || (entry.result ? 'このお告げなし' : '写真を保存済み・提案なし'))}</p>`;
       button.onclick = () => openSavedShelf(entry.id);
@@ -3643,7 +3684,15 @@ function init(){
   });
   document.getElementById('shelfPlaceForm').addEventListener('submit', e => {
     e.preventDefault();
-    saveShelfPlace(document.getElementById('shelfPlace').value);
+    const input = document.getElementById('shelfPlace');
+    // 空のまま押したら閉じずに入力欄へ（「押したら次に行って入れられない」対策）
+    if (!input.value.trim()){ input.focus(); toast('お店の名前を入れてね'); return; }
+    saveShelfPlace(input.value);
+  });
+  document.getElementById('btnShelfPlaceOther').addEventListener('click', () => {
+    document.getElementById('btnShelfPlaceOther').hidden = true;
+    document.getElementById('shelfPlaceForm').hidden = false;
+    document.getElementById('shelfPlace').focus();
   });
   document.getElementById('btnShelfPlaceSkip').addEventListener('click', () => {
     document.getElementById('shelfLocation').hidden = true;
