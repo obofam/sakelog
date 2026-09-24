@@ -1,5 +1,5 @@
 // 酒ログ Service Worker — シンプルな cache-first
-const CACHE_NAME = 'sakelog-v27';
+const CACHE_NAME = 'sakelog-v28';
 const STAMPS_CACHE = 'sakelog-stamps-v1'; // 肴スタンプ（APNG）専用。アプリのキャッシュ更新でも消さない
 const ASSETS = [
   './',
@@ -49,17 +49,27 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // ページ本体（ナビゲーション / index.html）は network-first。オンラインなら常に最新版、オフラインならキャッシュ
+  // ページ本体（ナビゲーション / index.html）は network-first。ただし3秒待って来なければキャッシュを先に返す
+  // （fetch自体はバックグラウンドで続けて、終わり次第キャッシュを更新する）
   const isPage = event.request.mode === 'navigate' || /\/(index\.html)?(\?.*)?$/.test(new URL(event.request.url).pathname + '');
   if (isPage) {
-    event.respondWith(
+    const cachePromise = caches.open(CACHE_NAME);
+    const fetchPromise = cachePromise.then((cache) =>
       fetch(event.request).then((res) => {
-        if (res && res.ok) {
-          const clone = res.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-        }
+        if (res && res.ok) cache.put(event.request, res.clone());
         return res;
-      }).catch(() => caches.match(event.request).then((c) => c || caches.match('./index.html')))
+      })
+    );
+    event.waitUntil(fetchPromise.catch(() => {})); // タイムアウト後もキャッシュ更新だけは終わらせる
+    const fallbackToCache = () =>
+      cachePromise
+        .then((cache) => cache.match(event.request))
+        .then((cached) => cached || caches.match('./index.html'));
+    event.respondWith(
+      Promise.race([
+        fetchPromise,
+        new Promise((resolve) => setTimeout(() => resolve(null), 3000))
+      ]).then((res) => res || fallbackToCache()).catch(fallbackToCache)
     );
     return;
   }

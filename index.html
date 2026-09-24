@@ -723,6 +723,7 @@
     <h2>取り込み中</h2>
     <p class="progress-line" id="importingText"></p>
     <div class="progress-bar-track"><div class="progress-bar-fill" id="importingBarFill"></div></div>
+    <button type="button" class="btn-text" id="btnImportLater" hidden>あとで読む</button>
   </section>
 
   <!-- ============ TRIAGE（未整理を整理する） ============ -->
@@ -834,7 +835,7 @@
         <a href="https://line.me/S/sticker/36507457" target="_blank" rel="noopener">白ワイン編</a> ・
         <a href="https://line.me/S/sticker/36509466" target="_blank" rel="noopener">赤ワイン編</a>
       </p>
-      <p class="version-text">v0.18</p>
+      <p class="version-text">v0.19</p>
       <p class="version-text" id="lastErrorLine" hidden></p>
     </div>
   </section>
@@ -940,16 +941,30 @@ function openDB(){
       }
     };
     req.onsuccess = (e) => {
-      e.target.result.onversionchange = () => { e.target.result.close(); dbPromise = null; };
-      resolve(e.target.result);
+      const db = e.target.result;
+      // バージョン競合・強制クローズ（ストレージ容量不足など）が起きたら、次回openDB()でつなぎ直す
+      db.onversionchange = () => { db.close(); dbPromise = null; };
+      db.onclose = () => { dbPromise = null; };
+      resolve(db);
     };
-    req.onerror = (e) => reject(e.target.error);
+    req.onerror = (e) => { dbPromise = null; reject(e.target.error); };
   });
   return dbPromise;
 }
 
 function withStore(storeName, mode){
-  return openDB().then((db) => db.transaction(storeName, mode).objectStore(storeName));
+  return openDB().then((db) => {
+    try {
+      return db.transaction(storeName, mode).objectStore(storeName);
+    } catch (e) {
+      // 閉じたDBハンドルをつかんだままだった場合など。つなぎ直して1回だけ再挑戦する
+      if (e && (e.name === 'InvalidStateError' || e.name === 'UnknownError')){
+        dbPromise = null;
+        return openDB().then((db2) => db2.transaction(storeName, mode).objectStore(storeName));
+      }
+      throw e;
+    }
+  });
 }
 function dbPut(storeName, obj){
   return withStore(storeName, 'readwrite').then((store) => new Promise((res, rej) => {
@@ -970,6 +985,17 @@ function dbDelete(storeName, id){
     const r = store.delete(id);
     r.onsuccess = () => res();
     r.onerror = () => rej(r.error);
+  }));
+}
+// drink と log をまとめて1つのトランザクションで保存する（片方だけ保存される事故を防ぐ）
+function dbPutDrinkAndLog(drink, log){
+  return openDB().then((db) => new Promise((resolve, reject) => {
+    const tx = db.transaction(['drinks', 'logs'], 'readwrite');
+    tx.objectStore('drinks').put(drink);
+    tx.objectStore('logs').put(log);
+    tx.oncomplete = () => resolve();
+    tx.onabort = () => reject(tx.error || new Error('保存できませんでした'));
+    tx.onerror = () => reject(tx.error);
   }));
 }
 function dbGetAll(storeName){
@@ -1201,7 +1227,12 @@ async function callGemini(parts, kind){
         const trialLeft = getTrialRemaining();
         if (['quota_day', 'quota_minute', 'busy'].includes(err.type) && RELAY_URL && trialLeft !== 0){
           try { return await callGeminiRelay(parts, kind); }
-          catch (relayErr) { throw err; } // お試しもダメなら、自分のキー側の理由を見せる
+          catch (relayErr) {
+            // お試しもダメなら、自分のキー側の理由を見せる（お試し側の理由もdetailに残す）
+            if (relayErr && relayErr.type === 'trial_exhausted') setTrialRemaining(0);
+            err.detail = ((err.detail || '') + ' / relay:' + (relayErr && relayErr.type)).trim();
+            throw err;
+          }
         }
         throw err;
       }
@@ -1223,7 +1254,7 @@ function geminiGenerationConfig(kind){
 }
 
 async function callGeminiDirect(parts, key, _retried, kind){
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(key)}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
   const body = {
     contents: [{ parts }],
     generationConfig: geminiGenerationConfig(kind)
@@ -1232,31 +1263,40 @@ async function callGeminiDirect(parts, key, _retried, kind){
   try {
     res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
       body: JSON.stringify(body)
     });
   } catch (e) {
     throw { type: 'network' };
   }
   if (res.status === 429){
-    // 無料枠の上限。1日分なのか1分あたりなのかを本文から見分ける
-    let info = '';
+    // 無料枠の上限。1日分なのか1分あたりなのかをdetailsのquotaIdから見分ける
     let msg = '';
+    let quotaId = '';
     let waitMs = 0;
     try {
       const data = await res.clone().json();
-      info = JSON.stringify((data && data.error && data.error.details) || '');
       msg = ((data && data.error && data.error.message) || '').slice(0, 100);
-      const m = info.match(/"retryDelay":"(\d+(?:\.\d+)?)s"/);
+      const details = (data && data.error && data.error.details) || [];
+      const quotaFailure = details.find((d) => d && typeof d['@type'] === 'string' && d['@type'].includes('QuotaFailure'));
+      if (quotaFailure && Array.isArray(quotaFailure.violations)){
+        quotaId = quotaFailure.violations.map((v) => v && v.quotaId).filter(Boolean).join(',');
+      }
+      const retryInfo = details.find((d) => d && typeof d['@type'] === 'string' && d['@type'].includes('RetryInfo'));
+      const retryDelay = retryInfo && retryInfo.retryDelay;
+      const m = typeof retryDelay === 'string' && retryDelay.match(/^(\d+(?:\.\d+)?)s$/);
       if (m) waitMs = Math.ceil(parseFloat(m[1]) * 1000);
     } catch (e) { /* 本文なし */ }
+    const detail = ('http 429 ' + (quotaId || msg)).trim().slice(0, 140);
     // 1日の上限、または残高・プランの問題（billing / plan）は待っても直らない
-    if (/PerDay/i.test(info) || /billing|plan|credit/i.test(msg)) throw { type: 'quota_day', detail: ('http 429 ' + msg).trim() };
+    const isDay = /PerDay/i.test(quotaId);
+    const isBilling = !quotaId && /prepa|credit|billing/i.test(msg);
+    if (isDay || isBilling) throw { type: 'quota_day', detail };
     if (!_retried){
       await new Promise((r) => setTimeout(r, Math.min(Math.max(waitMs, 5000), 30000)));
       return callGeminiDirect(parts, key, true, kind);
     }
-    throw { type: 'quota_minute', detail: ('http 429 ' + msg).trim() };
+    throw { type: 'quota_minute', detail };
   }
   if (res.status === 503 && !_retried){
     await new Promise((r) => setTimeout(r, 2000));
@@ -1291,10 +1331,10 @@ async function callGeminiRelay(parts, kind){
   if (!res.ok){
     let code = null;
     try { const j = await res.clone().json(); code = j && (j.error && typeof j.error === 'string' ? j.error : (j.error && j.error.status)); } catch (e) { /* 本文なし */ }
-    if (code === 'trial_exhausted') throw { type: 'trial_exhausted', detail: code };
+    if (code === 'trial_exhausted') { setTrialRemaining(0); throw { type: 'trial_exhausted', detail: code }; }
     if (code === 'trial_disabled') throw { type: 'trial_disabled', detail: code };
     if (code === 'daily_cap') throw { type: 'daily_cap', detail: code };
-    if (code === 'upstream_busy' || code === 'UNAVAILABLE' || res.status === 503 || res.status === 429) throw { type: 'busy', detail: code || ('http ' + res.status) };
+    if (code === 'upstream_busy' || code === 'upstream_quota' || code === 'UNAVAILABLE' || res.status === 503 || res.status === 429) throw { type: 'busy', detail: code || ('http ' + res.status) };
     if (res.status === 401 || res.status === 403) throw { type: 'auth', detail: code || ('http ' + res.status) };
     throw { type: 'other', status: res.status, detail: code || ('http ' + res.status) };
   }
@@ -1428,6 +1468,30 @@ function showScreen(id){
   screens.forEach((s) => {
     document.getElementById(s).hidden = (s !== id);
   });
+  // SW更新待ちのリロードは、ホームに戻ってきて何も作業中じゃないタイミングまで待つ
+  if (id === 'home' && swReloadPending && !isBusyWithWork()){
+    swReloadPending = false;
+    location.reload();
+  }
+}
+
+// 保存中・取り込み中・バックアップ書き出し中・棚モード中は、SW更新のリロードで作業を飛ばさない
+let swReloadPending = false;
+let hadControllerAtLoad = false;
+function isBusyWithWork(){
+  const importingHidden = document.getElementById('importing').hidden;
+  const shelfHidden = document.getElementById('shelf').hidden;
+  const backupBtn = document.getElementById('btnBackupExport');
+  return saving || !importingHidden || !shelfHidden || (backupBtn && backupBtn.disabled);
+}
+// service-worker.jsのcontrollerchangeから呼ばれる
+function onSwControllerChange(){
+  if (!hadControllerAtLoad) return; // 初回インストールはリロード不要
+  if (!document.getElementById('home').hidden && !isBusyWithWork()){
+    location.reload();
+  } else {
+    swReloadPending = true;
+  }
 }
 
 /* =========================================================
@@ -1449,6 +1513,7 @@ let pending = null; // { photo, thumb, drankAt, photoUrl }
 let pendingRating = null;
 let homeThumbUrls = [];
 let detailPhotoUrl = null;
+let ratePhotoUrl = null;
 
 /* =========================================================
    写真処理
@@ -1463,9 +1528,10 @@ async function loadBitmap(file){
   }
   return await new Promise((resolve, reject) => {
     const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = URL.createObjectURL(file);
+    const url = URL.createObjectURL(file);
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
+    img.src = url;
   });
 }
 
@@ -1524,9 +1590,10 @@ async function handleFileSelected(file){
   pending = await preparePhoto(file);
   pendingRating = null;
 
-  const photoUrl = URL.createObjectURL(pending.photo);
+  if (ratePhotoUrl) URL.revokeObjectURL(ratePhotoUrl);
+  ratePhotoUrl = URL.createObjectURL(pending.photo);
   const img = document.getElementById('ratePhoto');
-  img.src = photoUrl;
+  img.src = ratePhotoUrl;
 
   renderRatingButtons();
   showScreen('rate');
@@ -1578,64 +1645,67 @@ async function finalizeSave(storeId){
   saving = true;
   setStoreButtonsDisabled(true);
 
-  const drinkId = uuid();
-  const [storedPhoto, storedThumb] = await Promise.all([toStored(pending.photo), toStored(pending.thumb)]);
-  const drink = {
-    id: drinkId,
-    kind: 'wine',  // 基本はワイン。日本酒・ビール等は将来ここを切り替える（ラベル読み取りで上書きされる）
-    name: null,
-    producer: null,
-    country: null,
-    region: null,
-    grape: null,
-    vintage: null,
-    color: null,
-    importer: null,
-    confirmed: false,
-    readAt: null,
-    readConfidence: null,
-    readNote: null,
-    readError: null,
-    excluded: false,
-    subject: null,
-    photo: storedPhoto,
-    thumb: storedThumb,
-    createdAt: Date.now()
-  };
-  const log = {
-    id: uuid(),
-    drinkId: drinkId,
-    drankAt: pending.drankAt,
-    rating: pendingRating,
-    storeId: storeId || null,
-    price: null,
-    memo: null,
-    companions: null,
-    food: null,
-    createdAt: Date.now()
-  };
+  try {
+    const drinkId = uuid();
+    const [storedPhoto, storedThumb] = await Promise.all([toStored(pending.photo), toStored(pending.thumb)]);
+    const drink = {
+      id: drinkId,
+      kind: 'wine',  // 基本はワイン。日本酒・ビール等は将来ここを切り替える（ラベル読み取りで上書きされる）
+      name: null,
+      producer: null,
+      country: null,
+      region: null,
+      grape: null,
+      vintage: null,
+      color: null,
+      importer: null,
+      confirmed: false,
+      readAt: null,
+      readConfidence: null,
+      readNote: null,
+      readError: null,
+      excluded: false,
+      subject: null,
+      photo: storedPhoto,
+      thumb: storedThumb,
+      createdAt: Date.now()
+    };
+    const log = {
+      id: uuid(),
+      drinkId: drinkId,
+      drankAt: pending.drankAt,
+      rating: pendingRating,
+      storeId: storeId || null,
+      price: null,
+      memo: null,
+      companions: null,
+      food: null,
+      createdAt: Date.now()
+    };
 
-  await dbPut('drinks', drink);
-  await dbPut('logs', log);
+    await dbPutDrinkAndLog(drink, log);
 
-  let storeName = '店：あとで';
-  if (storeId){
-    const store = await dbGet('stores', storeId);
-    if (store){
-      store.lastUsedAt = Date.now();
-      await dbPut('stores', store);
-      storeName = store.name;
+    let storeName = '店：あとで';
+    if (storeId){
+      const store = await dbGet('stores', storeId);
+      if (store){
+        store.lastUsedAt = Date.now();
+        await dbPut('stores', store);
+        storeName = store.name;
+      }
     }
+
+    showDoneScreen(drink, log, storeName);
+
+    if (hasGeminiAccess()){
+      autoReadLabel(drinkId).catch(() => {});
+    }
+  } catch (err) {
+    toast('保存できなかった。もう一度試してね');
+  } finally {
+    saving = false;
+    setStoreButtonsDisabled(false);
   }
-
-  showDoneScreen(drink, log, storeName);
-
-  if (hasGeminiAccess()){
-    autoReadLabel(drinkId).catch(() => {});
-  }
-
-  saving = false;
-  setStoreButtonsDisabled(false);
 }
 
 function setStoreButtonsDisabled(disabled){
@@ -1648,57 +1718,89 @@ function setStoreButtonsDisabled(disabled){
    ラベル読み取り（Gemini）
 ========================================================= */
 
-// drink オブジェクトにGeminiの読み取り結果を書き込んで保存する共通処理
+// 同じ drink に対する読み取りが同時に走らないようにする（連打・二重呼び出し対策）
+const labelInflight = new Set();
+
+// 最新のdrinkレコードを読み直してラベル関連フィールドだけマージ保存する（確定済みは上書きしない）
+async function mergeLabelFields(id, fields){
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('drinks', 'readwrite');
+    const store = tx.objectStore('drinks');
+    let result = null;
+    const req = store.get(id);
+    req.onsuccess = () => {
+      const current = req.result;
+      if (!current){ result = null; return; } // 削除済みなら何もしない
+      if (current.confirmed === true){ result = current; return; } // 確定済みはラベル情報を上書きしない
+      result = { ...current, ...fields };
+      store.put(result);
+    };
+    tx.oncomplete = () => resolve(result);
+    tx.onabort = () => reject(tx.error || new Error('保存できませんでした'));
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+// drink にGeminiの読み取り結果を書き込んで保存する共通処理
 async function fetchLabelForDrink(drink){
+  if (labelInflight.has(drink.id)) return { ok: false, errType: 'dup' };
+  labelInflight.add(drink.id);
   try {
     const photoBlob = drinkPhoto(drink);
     if (!photoBlob) throw { type: 'other' };
     const result = await callGeminiVision(photoBlob);
     const isDrink = result.is_drink !== false; // 判断に迷ったらtrue扱い（undefinedも許容）
+    let fields;
     if (!isDrink){
-      drink.kind = 'not_drink';
-      drink.excluded = true;
-      drink.subject = result.subject || 'other';
-      drink.name = null;
-      drink.producer = null;
-      drink.country = null;
-      drink.region = null;
-      drink.grape = null;
-      drink.vintage = null;
-      drink.color = null;
-      drink.importer = null;
-      drink.confirmed = false;
-      drink.readAt = Date.now();
-      drink.readConfidence = (typeof result.confidence === 'number') ? result.confidence : null;
-      drink.readNote = result.note || null;
-      drink.readError = null;
-      await dbPut('drinks', drink);
-      return { ok: true, drink };
+      fields = {
+        kind: 'not_drink',
+        excluded: true,
+        subject: result.subject || 'other',
+        name: null,
+        producer: null,
+        country: null,
+        region: null,
+        grape: null,
+        vintage: null,
+        color: null,
+        importer: null,
+        confirmed: false,
+        readAt: Date.now(),
+        readConfidence: (typeof result.confidence === 'number') ? result.confidence : null,
+        readNote: result.note || null,
+        readError: null
+      };
+    } else {
+      const vintageNum = parseInt(result.vintage, 10);
+      fields = {
+        excluded: false,
+        name: result.name || null,
+        producer: result.producer || null,
+        country: result.country || null,
+        region: result.region || null,
+        grape: result.grape || null,
+        vintage: (result.vintage != null && !isNaN(vintageNum)) ? vintageNum : null,
+        color: result.color || null,
+        importer: result.importer || null,
+        confirmed: false,
+        readAt: Date.now(),
+        readConfidence: (typeof result.confidence === 'number') ? result.confidence : null,
+        readNote: result.note || null,
+        readError: null
+      };
+      if (result.kind) fields.kind = result.kind;
     }
-    drink.excluded = false;
-    if (result.kind) drink.kind = result.kind;
-    drink.name = result.name || null;
-    drink.producer = result.producer || null;
-    drink.country = result.country || null;
-    drink.region = result.region || null;
-    drink.grape = result.grape || null;
-    const vintageNum = parseInt(result.vintage, 10);
-    drink.vintage = (result.vintage != null && !isNaN(vintageNum)) ? vintageNum : null;
-    drink.color = result.color || null;
-    drink.importer = result.importer || null;
-    drink.confirmed = false;
-    drink.readAt = Date.now();
-    drink.readConfidence = (typeof result.confidence === 'number') ? result.confidence : null;
-    drink.readNote = result.note || null;
-    drink.readError = null;
-    await dbPut('drinks', drink);
-    return { ok: true, drink };
+    const updated = await mergeLabelFields(drink.id, fields);
+    if (!updated) return { ok: false, errType: 'gone' };
+    return { ok: true, drink: updated };
   } catch (err) {
     const errType = (err && err.type) || 'other';
-    drink.readAt = Date.now();
-    drink.readError = errType;
-    await dbPut('drinks', drink);
+    const updated = await mergeLabelFields(drink.id, { readAt: Date.now(), readError: errType });
+    if (!updated) return { ok: false, errType };
     return { ok: false, errType };
+  } finally {
+    labelInflight.delete(drink.id);
   }
 }
 
@@ -1799,10 +1901,10 @@ async function readUnreadLabelsBatch(){
       if (i < targets.length - 1) await sleep(LABEL_BATCH_GAP_MS);
     }
   } finally {
+    btn.disabled = false;
+    btn.textContent = '📖 未読のラベルをまとめて読み取る';
     await releaseWakeLock(wakeLock);
   }
-  btn.disabled = false;
-  btn.textContent = '📖 未読のラベルをまとめて読み取る';
   toast(excludedCount > 0 ? `読めた ${drinkCount}本、酒じゃないの ${excludedCount}枚` : `${drinkCount}件読み取ったよ`);
   renderHome();
 }
@@ -1826,6 +1928,7 @@ async function startBulkImport(files, onboarding){
 
   let imported = 0;
   let skipped = 0;
+  const importedIds = [];
 
   for (let i = 0; i < files.length; i++){
     const file = files[i];
@@ -1878,6 +1981,7 @@ async function startBulkImport(files, onboarding){
       await dbPut('drinks', drink);
       await dbPut('logs', log);
       existingKeys.add(importKey);
+      importedIds.push(drinkId);
       imported++;
     } catch (e) {
       // この1枚が失敗してもバッチ全体は止めない
@@ -1889,7 +1993,16 @@ async function startBulkImport(files, onboarding){
   }
 
   if (hasGeminiAccess() && imported > 0){
-    await runLabelBatchDuringImport();
+    await runLabelBatchDuringImport(importedIds);
+  }
+  const skippedByUser = importLaterRequested;
+  importLaterRequested = false;
+  document.getElementById('btnImportLater').hidden = true;
+
+  if (skippedByUser){
+    showScreen('home');
+    await renderHome();
+    return;
   }
 
   if (onboarding){
@@ -1908,20 +2021,28 @@ async function startBulkImport(files, onboarding){
 }
 
 // 取り込み直後、アクセスがあれば自動でラベルをまとめて読む（取り込み画面の進捗を流用）
-async function runLabelBatchDuringImport(){
+// 「あとで読む」が押されたら残りは設定画面のまとめ読みに回す（未読のまま残しておく）
+let importLaterRequested = false;
+async function runLabelBatchDuringImport(importedIds){
+  const idSet = new Set(importedIds || []);
   const drinks = await dbGetAll('drinks');
-  const targets = getUnreadLabelTargets(drinks);
+  const targets = getUnreadLabelTargets(drinks).filter((d) => idSet.has(d.id));
   if (targets.length === 0) return;
   const stopTypes = ['auth', 'trial_exhausted', 'trial_disabled', 'daily_cap', 'quota_day'];
+  const laterBtn = document.getElementById('btnImportLater');
+  laterBtn.hidden = false;
   const wakeLock = await holdWakeLock();
   try {
     for (let i = 0; i < targets.length; i++){
+      if (importLaterRequested) break;
       setImportingProgress(i + 1, targets.length, 'ラベル読み取り中');
       const res = await fetchLabelForDrink(targets[i]);
       if (!res.ok && stopTypes.includes(res.errType)) break;
+      if (importLaterRequested) break;
       if (i < targets.length - 1) await sleep(LABEL_BATCH_GAP_MS);
     }
   } finally {
+    laterBtn.hidden = true;
     await releaseWakeLock(wakeLock);
   }
 }
@@ -1986,7 +2107,7 @@ async function renderTriage(){
       : `<span class="triage-name muted">名前 まだ</span>`;
 
     const storeLabel = log.storeId
-      ? (() => { const s = storesArr.find((x) => x.id === log.storeId); return s ? `店：${s.name} ▾` : '店：あとで ▾'; })()
+      ? (() => { const s = storesArr.find((x) => x.id === log.storeId); return s ? `店：${escapeHtml(s.name)} ▾` : '店：あとで ▾'; })()
       : '店：あとで ▾';
 
     const thumbHtml = thumbUrl
@@ -2088,14 +2209,18 @@ async function handleTriageAllGood(){
    完了画面
 ========================================================= */
 let doneTimer = null;
+let donePhotoUrl = null;
 function showDoneScreen(drink, log, storeName){
   const donePhotoEl = document.getElementById('donePhoto');
   resetPhotoFallback(donePhotoEl);
   donePhotoEl.onerror = () => photoLoadError(donePhotoEl);
   const doneThumbBlob = drinkThumb(drink);
+  if (donePhotoUrl) URL.revokeObjectURL(donePhotoUrl);
   if (doneThumbBlob){
-    donePhotoEl.src = URL.createObjectURL(doneThumbBlob);
+    donePhotoUrl = URL.createObjectURL(doneThumbBlob);
+    donePhotoEl.src = donePhotoUrl;
   } else {
+    donePhotoUrl = null;
     photoLoadError(donePhotoEl);
   }
   const info = ratingInfo(log.rating);
@@ -2519,7 +2644,7 @@ function renderProfileCard(profile){
       <p class="profile-label">たまには</p>
       <p class="profile-adventure">${escapeHtml(profile.adventure || '')}</p>
       <div class="profile-footer">
-        <span>${profile.basedOn || 0}本から · ${dateStr}</span>
+        <span>${Number(profile.basedOn) || 0}本から · ${dateStr}</span>
         <button type="button" class="btn-text" id="btnRegenProfile">🔄 更新</button>
       </div>
     </div>
@@ -2673,6 +2798,7 @@ async function generateProfile(){
     toast(msg || '読めなかった');
   } finally {
     if (genBtn){ genBtn.disabled = false; genBtn.textContent = '🍷 好みを言語化する'; }
+    if (regenBtn){ regenBtn.disabled = false; regenBtn.textContent = '🔄 更新'; }
     const refreshBtn = document.getElementById('btnRefreshProfile');
     if (refreshBtn && refreshBtn.disabled){ refreshBtn.disabled = false; refreshBtn.textContent = '🔄 好みを更新'; }
   }
@@ -2716,7 +2842,7 @@ function renderDrinkInfo(drink){
         <input type="text" id="editCountry" placeholder="国" value="${escapeHtml(drink.country || '')}">
         <input type="text" id="editRegion" placeholder="地域" value="${escapeHtml(drink.region || '')}">
         <input type="text" id="editGrape" placeholder="品種・原料など" value="${escapeHtml(drink.grape || '')}">
-        <input type="text" id="editVintage" placeholder="年（例：2021）" value="${drink.vintage != null ? drink.vintage : ''}" inputmode="numeric">
+        <input type="text" id="editVintage" placeholder="年（例：2021）" value="${drink.vintage != null ? escapeHtml(String(drink.vintage)) : ''}" inputmode="numeric">
         <div class="chip-row" id="editColorChips" style="flex-wrap:wrap;">
           ${colors.map((c) => `<button type="button" class="chip${drink.color === c ? ' selected' : ''}" data-color="${c}">${colorLabel(c)}</button>`).join('')}
         </div>
@@ -3410,15 +3536,29 @@ async function buildBackup(onProgress){
   ]);
   const total = drinksArr.length + shelvesArr.length;
   let done = 0;
+  let photoLost = 0;
   const drinks = [];
   for (const d of drinksArr){
-    drinks.push(await encodeBlobFields(d));
+    try {
+      drinks.push(await encodeBlobFields(d));
+    } catch (e) {
+      // 写真が読めなかったら写真なしで記録だけ残す（バックアップ全体を止めない）
+      const { photo, thumb, ...rest } = d;
+      drinks.push({ ...rest, photoLost: true });
+      photoLost++;
+    }
     done++;
     if (onProgress) onProgress(done, total);
   }
   const shelves = [];
   for (const s of shelvesArr){
-    shelves.push(await encodeBlobFields(s));
+    try {
+      shelves.push(await encodeBlobFields(s));
+    } catch (e) {
+      const { photo, ...rest } = s;
+      shelves.push({ ...rest, photoLost: true });
+      photoLost++;
+    }
     done++;
     if (onProgress) onProgress(done, total);
   }
@@ -3431,10 +3571,46 @@ async function buildBackup(onProgress){
       logs: logs.length,
       stores: stores.length,
       profile: profileArr.length,
-      shelves: shelves.length
+      shelves: shelves.length,
+      photoLost
     },
     drinks, logs, stores, profile: profileArr, shelves
   };
+}
+
+// バックアップのJSONは外から持ち込まれるものなので、型がおかしい（数値のはずが文字列など）ことがある前提で寄せる
+const BACKUP_FIELD_TYPES = {
+  drinks: {
+    id: 'string', kind: 'string', name: 'string', producer: 'string', country: 'string',
+    region: 'string', grape: 'string', color: 'string', importer: 'string',
+    readNote: 'string', readError: 'string', subject: 'string', importKey: 'string',
+    vintage: 'number', readConfidence: 'number', readAt: 'number', createdAt: 'number'
+  },
+  logs: {
+    id: 'string', drinkId: 'string', storeId: 'string', memo: 'string', companions: 'string', food: 'string',
+    drankAt: 'number', rating: 'number', price: 'number', createdAt: 'number'
+  },
+  stores: { id: 'string', name: 'string', lastUsedAt: 'number' },
+  profile: {
+    id: 'string', summary: 'string', sommelier: 'string', axis1: 'string', axis2: 'string', adventure: 'string',
+    basedOn: 'number', generatedAt: 'number'
+  },
+  shelves: { id: 'string', place: 'string', createdAt: 'number' }
+};
+function coerceBackupFields(name, rec){
+  const types = BACKUP_FIELD_TYPES[name];
+  if (!types) return rec;
+  const out = { ...rec };
+  for (const key of Object.keys(types)){
+    if (out[key] == null) continue; // null/undefinedは「未入力」の意味なのでそのまま
+    if (types[key] === 'number'){
+      const n = Number(out[key]);
+      out[key] = isNaN(n) ? null : n;
+    } else {
+      out[key] = String(out[key]);
+    }
+  }
+  return out;
 }
 
 async function restoreBackup(obj, onProgress){
@@ -3449,7 +3625,8 @@ async function restoreBackup(obj, onProgress){
       if (onProgress) onProgress(done, total);
       try {
         if (!rec || rec.id == null) { errors++; continue; }
-        const existing = await dbGet(name, rec.id);
+        const id = String(rec.id);
+        const existing = await dbGet(name, id);
         if (existing){ skipped++; continue; }
         const decoded = decodeBlobFields(rec);
         for (const key of Object.keys(decoded)){
@@ -3457,7 +3634,8 @@ async function restoreBackup(obj, onProgress){
             decoded[key] = await toStored(decoded[key]);
           }
         }
-        await dbPut(name, decoded);
+        const coerced = coerceBackupFields(name, { ...decoded, id });
+        await dbPut(name, coerced);
         added++;
       } catch (e) {
         errors++;
@@ -3516,9 +3694,16 @@ function closeSettingsSheet(){
   renderHome();
 }
 
+// バックアップは2段階：①まとめる（ここでBlobを作る）②共有先を選ぶ（ここでnavigator.shareを呼ぶ）。
+// 共有はユーザーの直近のタップからじゃないとブラウザに弾かれることがあるので、タップを分けている
+let pendingBackup = null; // { blob, filename, counts }
+
 async function handleBackupExport(){
+  if (pendingBackup){
+    await shareOrDownloadBackup();
+    return;
+  }
   const btn = document.getElementById('btnBackupExport');
-  const originalText = btn.textContent;
   btn.disabled = true;
   try {
     const backup = await buildBackup((done, total) => {
@@ -3529,7 +3714,21 @@ async function handleBackupExport(){
     const now = new Date();
     const pad = (n) => String(n).padStart(2, '0');
     const filename = `sakelog-backup-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}.json`;
+    pendingBackup = { blob, filename, counts: backup.counts };
+    btn.disabled = false;
+    btn.textContent = '📤 保存先を選ぶ';
+  } catch (err) {
+    toast('まとめられなかった');
+    btn.disabled = false;
+    btn.textContent = '💾 バックアップを書き出す';
+  }
+}
 
+async function shareOrDownloadBackup(){
+  const btn = document.getElementById('btnBackupExport');
+  const { blob, filename, counts } = pendingBackup;
+  btn.disabled = true;
+  try {
     let shared = false;
     if (navigator.canShare){
       const file = new File([blob], filename, { type: 'application/json' });
@@ -3540,7 +3739,9 @@ async function handleBackupExport(){
         } catch (err) {
           if (err && err.name === 'AbortError'){
             toast('やめたよ');
-            return;
+            btn.disabled = false;
+            btn.textContent = '📤 保存先を選ぶ';
+            return; // 取り消しはタイムスタンプもエラー表示もしない
           }
           // 共有以外の失敗はダウンロードにフォールバック
         }
@@ -3555,18 +3756,22 @@ async function handleBackupExport(){
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 10000);
+      // shareに対応してないブラウザはダウンロードで完了とみなす
     }
 
     setLastBackupAt(Date.now());
     const mb = (blob.size / (1024 * 1024)).toFixed(1);
-    toast(`書き出したよ（${backup.counts.drinks}本・${mb}MB）`);
+    let msg = `書き出したよ（${counts.drinks}本・${mb}MB）`;
+    if (counts.photoLost > 0) msg += ` 写真を読めなかった${counts.photoLost}枚は写真なしで保存したよ`;
+    toast(msg);
     renderLastBackupLine();
     if (!document.getElementById('home').hidden) renderHome();
+    pendingBackup = null;
+    btn.textContent = '💾 バックアップを書き出す';
   } catch (err) {
     toast('書き出せなかった');
   } finally {
     btn.disabled = false;
-    btn.textContent = originalText;
   }
 }
 
@@ -3617,25 +3822,37 @@ async function migratePhotoBlobsToBuffers(){
   try {
     const drinksArr = await dbGetAll('drinks');
     for (const d of drinksArr){
-      let changed = false;
-      if (d.photo instanceof Blob){ d.photo = await toStored(d.photo); changed = true; }
-      if (d.thumb instanceof Blob){ d.thumb = await toStored(d.thumb); changed = true; }
-      if (changed){
-        await dbPut('drinks', d);
-        await sleep(0);
+      if (d.photoBroken) continue; // 前回すでに壊れてると分かってるものは毎回リトライしない
+      try {
+        let changed = false;
+        if (d.photo instanceof Blob){ d.photo = await toStored(d.photo); changed = true; }
+        if (d.thumb instanceof Blob){ d.thumb = await toStored(d.thumb); changed = true; }
+        if (changed){
+          await dbPut('drinks', d);
+          await sleep(0);
+        }
+      } catch (e) {
+        // この1件だけ詰め替えられない。写真なし扱いにして先へ進む
+        try { await dbPut('drinks', { ...d, photoBroken: true }); } catch (e2) { /* 無視 */ }
       }
     }
     const shelvesArr = await dbGetAll('shelves');
     for (const s of shelvesArr){
-      if (s.photo instanceof Blob){
-        s.photo = await toStored(s.photo);
-        await dbPut('shelves', s);
-        await sleep(0);
+      if (s.photoBroken) continue;
+      try {
+        if (s.photo instanceof Blob){
+          s.photo = await toStored(s.photo);
+          await dbPut('shelves', s);
+          await sleep(0);
+        }
+      } catch (e) {
+        try { await dbPut('shelves', { ...s, photoBroken: true }); } catch (e2) { /* 無視 */ }
       }
     }
+    // 両方のループを最後まで回せたときだけ完了フラグを立てる
     try { localStorage.setItem('sakelog.migratedBuf', '1'); } catch (e) { /* 無視 */ }
   } catch (e) {
-    // 失敗しても次回起動時にまた試す（フラグを立てない）
+    // dbGetAllなど大枠で失敗したときは次回起動時にまた試す（フラグを立てない）
   }
 }
 
@@ -3719,6 +3936,10 @@ function init(){
   });
   document.getElementById('btnShelfRetry').addEventListener('click', () => {
     retryShelf(activeShelfId);
+  });
+
+  document.getElementById('btnImportLater').addEventListener('click', () => {
+    importLaterRequested = true;
   });
 
   document.getElementById('btnTriageBack').addEventListener('click', closeTriage);
@@ -3827,11 +4048,12 @@ init();
 <!-- SW:START -->
 <script>
 if ('serviceWorker' in navigator) {
+  hadControllerAtLoad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('./sw.js').catch(()=>{});
   let reloaded = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (reloaded) return; reloaded = true;
-    if (navigator.serviceWorker.controller) location.reload();
+    if (navigator.serviceWorker.controller) onSwControllerChange();
   });
 }
 </script>
